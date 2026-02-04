@@ -1,0 +1,64 @@
+---
+import ThemeToggle from "./ThemeToggle.astro";
+import Search from "./Search.astro";
+
+interface Props {
+  activeSection?: string;
+}
+
+const { activeSection = "home" } = Astro.props;
+
+const navItems = [
+  { href: "/", label: "home" },
+  { href: "/posts", label: "writing" },
+  { href: "/projects", label: "projects" },
+  { href: "/about", label: "about" },
+];
+---
+
+<header class="mb-8 md:mb-12" data-pagefind-ignore transition:animate="none">
+  <div class="flex items-start justify-between">
+    <div>
+      <a href="/" class="group flex items-center gap-3">
+        <h1
+          class="font-serif text-2xl md:text-3xl font-normal tracking-tight"
+        >
+          Justin Meimar
+        </h1>
+        <img
+          src="/mygoph.png"
+          alt="Go gopher"
+          class="w-6 h-6 md:w-7 md:h-7 object-contain pb-1"
+        />
+      </a>
+      <p class="font-mono text-xs tracking-wide text-[var(--text-muted)] mt-2">
+        Systems and Web Programmer
+      </p>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <Search />
+      <ThemeToggle />
+    </div>
+  </div>
+
+  <nav
+    class="mt-8 flex gap-6 font-mono text-xs tracking-wide text-[var(--text-muted)]"
+  >
+    {
+      navItems.map((item) => (
+        <a
+          href={item.href}
+          class:list={[
+            "transition-colors duration-300",
+            activeSection === item.label
+              ? "text-[var(--text)]"
+              : "hover:text-[var(--text-faint)]",
+          ]}
+        >
+          {item.label}
+        </a>
+      ))
+    }
+  </nav>
+</header>

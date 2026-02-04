@@ -1,0 +1,153 @@
+---
+import "../styles/global.css";
+import { ClientRouter } from "astro:transitions";
+import LoadingIndicator from "../components/LoadingIndicator.astro";
+import PostHog from "../components/posthog.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  type?: "website" | "article";
+  publishedTime?: Date;
+  modifiedTime?: Date;
+  tags?: string[];
+}
+
+const {
+  title,
+  description = "Justin Meimar's personal website and blog",
+  ogImage = "/og-default.png",
+  type = "website",
+  publishedTime,
+  modifiedTime,
+  tags,
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+
+// JSON-LD structured data
+const isHomePage = Astro.url.pathname === "/";
+const isArticle = type === "article";
+
+const personSchema = {
+  "@type": "Person",
+  name: "Justin Meimar",
+  url: Astro.site?.toString(),
+  sameAs: [
+    "https://github.com/JustinMeimar",
+  ],
+  jobTitle: "[Your job title]",
+  knowsAbout: ["[Add your areas of expertise]"],
+};
+
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Justin Meimar",
+  url: Astro.site?.toString(),
+  author: personSchema,
+  description: "Personal website and blog of Justin Meimar",
+};
+
+const articleSchema = isArticle ? {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: title,
+  description: description,
+  url: canonicalURL.toString(),
+  image: new URL(ogImage, Astro.site).toString(),
+  author: personSchema,
+  publisher: {
+    "@type": "Person",
+    name: "Justin Meimar",
+    url: Astro.site?.toString(),
+  },
+  datePublished: publishedTime?.toISOString(),
+  dateModified: (modifiedTime ?? publishedTime)?.toISOString(),
+  keywords: tags?.join(", "),
+} : null;
+
+const jsonLd = isHomePage ? websiteSchema : (isArticle ? articleSchema : null);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Justin Meimar" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Preload fonts - browser fetches these before rendering -->
+    <link rel="preload" href="/fonts/Newsreader-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/JetBrainsMono-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="RSS Feed"
+      href="/rss.xml"
+    />
+
+    <!-- Canonical -->
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Primary Meta Tags -->
+    <title>{title}</title>
+    <meta name="title" content={title} />
+    <meta name="description" content={description} />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content={type === "article" ? "article" : "website"} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL(ogImage, Astro.site)} />
+    {publishedTime && <meta property="article:published_time" content={publishedTime.toISOString()} />}
+    {modifiedTime && <meta property="article:modified_time" content={modifiedTime.toISOString()} />}
+    {tags && tags.map(tag => <meta property="article:tag" content={tag} />)}
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={new URL(ogImage, Astro.site)} />
+
+    <!-- JSON-LD Structured Data -->
+    {jsonLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    )}
+
+    <!-- Theme initialization (prevents flash) -->
+    <script is:inline>
+      function getTheme() {
+        const stored = localStorage.getItem("theme");
+        if (stored) return stored;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+      }
+      document.documentElement.setAttribute("data-theme", getTheme());
+
+      document.addEventListener("astro:before-swap", (e) => {
+        const theme = document.documentElement.getAttribute("data-theme");
+        e.newDocument.documentElement.setAttribute("data-theme", theme);
+      });
+    </script>
+
+    <ClientRouter />
+    <PostHog />
+  </head>
+  <body class="min-h-screen" data-pagefind-ignore>
+    <LoadingIndicator />
+    <slot />
+
+  </body>
+</html>

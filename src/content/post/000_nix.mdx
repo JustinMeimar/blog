@@ -1,0 +1,132 @@
+
+---
+title: "Lazy Secrets with Nix"
+publishDate: 2025-12-11
+description: "Using Nix's lazy evaluation to copy secrets into a configuration only
+as required."
+tags: ["nix"]
+---
+
+I use a monolithic file for all my secretsa
+Lazy as in evaluation, secrets as in don't leak 'em.
+
+I have been enamoured with the idea of a fully declarative home server
+since being introduced to Nix about a year ago. Perhaps it is just me,
+but I have a general fear of forgetting how I've set things up.
+Especially with server management, when bespoke configuration files
+are often tucked away in the nooks and crannies of `/etc`.
+
+For me Nix offers a cure to my forgetting of an `nginx` configuration
+file format, or where to put an `SSL` certificate. I recently learned
+something coolabout secrets and the Nix expression language's _lazy_
+nature the other day, so I wanted to share it here.
+
+### Secrets
+
+We all have secrets, personal and cryptographic alike, and it is a
+good idea to keep them hidden. My secret management problem started
+when I learned that `ssh-keygen` will cause a collision with the last
+key I named `id_rsa`... Since then, there was a time when my `~/.ssh`
+was considerably cluttered. A good consistent naming scheme I find
+goes a long way, however, the issue of duplicating secrets across
+multiple machines (my laptop, desktop, work computer and university
+lab machines for example) necessitated a more dexterous secret
+management system. That is where I've found `sops-nix` useful.
+
+### Sops and Secrets
+
+[Sops](https://google.ca) is a project for managing secrets. It exists
+independently of Nix, and `sops-nix` is the NixOS module for
+configuring `sops` declaratively. The basic workflow for using
+`sops-nix` is as follows.
+
+1. Create a monolithic `secrets.yaml` file somewhere locally. For
+example, an excerpt of mine looks like:
+
+```yaml
+cloudflare-dydns-token: | CLOUDFLARE_API_TOKEN=cf-token
+nix-github-token: | gh-token
+```
+
+2. Create a `key.age` keypair locally to produce an encrypted
+`secrets.yaml.enc` which can be stored in your Nix configuration
+repository. (I put mine adjacent to `sops.nix`.) ```bash sops
+--encrypt \ --age "$(cat nix.age.pub)" \ ./secrets.yaml >
+./secrets.yaml.enc ```
+
+3. Set up the `sops-nix` module something like below.
+
+```nix sops = {
+
+    age.keyFile = "/home/justin/.secrets/nix.age";
+    defaultSopsFile = ./secrets.yaml.enc;
+    secrets = {
+        cloudflare-dydns-token = {
+            mode = "0600";
+        };
+        github-token = {
+            path = "/home/justin/.ssh/nix-github-token";
+            mode = "0600";
+        };
+    };
+};
+
+```
+
+When building your configuration, sops will read in the encrypted
+secrets file, unlock each secret with the `.age` key and write it into
+the specified file path. If the `path` attribute is not specified, the
+secret will automatically be written to `/run/secrets` on NixOS and
+`~/.nix-profile/secrets/` with standalone Nix.
+
+> Note: This doesn't solve the "duplicate your secrets with scp"
+problem entirely. It reduces it to a maximum copy of two: one for the
+age key, one for the encrypted secrets. It is progress, but maybe
+there is a better solution for this.
+
+### Laziness
+
+Once `sops-nix` is configured, you may be asking - doesn't having a
+monolithic `secrets.yaml` mean my secrets will be duplicated _in full_
+on all my machines? Probably best for work secrets to be isolated.
+Work secrets remain on work machines, similarly for personal secrets.
+This is where the lazy evaluation of Nix is perfect. When building
+your configuration, `sops-nix` will only ever write out the secret to
+a file _if it is referenced in another attribute_. In other words,
+secrets are produced at runtime, on demand - i.e. lazily.
+
+For example, I only ever need my CloudFlare dynamic DNS token on one
+server. So long as `sops.secrets.cloudflare-dydns-token` is only
+referenced in this server's configuration, it will never be evaluated
+on others. My homeserver is called `bee` (because it is a BeeLink
+U59).
+
+```nix // bee.nix { config, pkgs, ... }:
+
+{
+  imports = [
+    ../modules/nixos/base.nix
+    ../programs/sops/sops.nix
+  ];
+
+  services.cloudflare-dyndns = {
+    enable = true;
+    domains = [
+        "justinmeimar.com"
+    ];
+    apiTokenFile = config.sops.secrets.cloudflare-dydns-token.path;
+    proxied = false;
+  };
+}
+```
+
+Now, if I ever want to switch the hardware for my home-server, all I
+have to do is install Nix, copy over some secrets, and a systemd
+service to manage dynamic DNS will set itself up instantly!
+
+#### Conclusion
+
+I'm not an expert on Nix, but if you aren't either, I hope this may
+have given you an impression of what is possible, and why the
+declarative dream is a beautiful one. This is my first blog, so thank
+you for reading this far!
