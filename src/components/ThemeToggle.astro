@@ -4,7 +4,7 @@
 
 <button
   id="theme-toggle"
-  class="font-mono text-xs tracking-wide px-3 py-1.5 rounded transition-all duration-300 bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text)]"
+  class="font-mono text-sm tracking-wide px-3 py-1.5 rounded transition-all duration-300 bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text)]"
   aria-label="Toggle theme"
 >
   <span class="theme-icon"></span>
@@ -22,7 +22,7 @@
 
     function updateIcon() {
       const theme = document.documentElement.getAttribute('data-theme');
-      icon.textContent = theme === 'dark' ? '明' : '暗';
+      icon.textContent = theme === 'dark' ? '☀' : '☾';
       button.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`);
     }
 
