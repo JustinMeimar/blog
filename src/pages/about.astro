@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+import Link from "../components/Link.astro";
 
 const experience = [
   {
@@ -34,18 +35,18 @@ const experience = [
           <br>
           Since then, compilers and systems programming have become my primary
           interest. I am fortunate to study as a graduate student underneath
-          <a href="https://webdocs.cs.ualberta.ca/~amaral/" class="link-underline">Nelson Amaral</a>
+          <Link href="https://webdocs.cs.ualberta.ca/~amaral/">Nelson Amaral</Link>
           at the University of Alberta. My time is spent reading,
           writing, and hacking on Mozilla's SpiderMonkey engine.
           <br>
           <br>
           Outside of computers I enjoy reading science fiction, some of my favourites
           are the works of
-          <a href="https://en.wikipedia.org/wiki/Philip_K._Dick_bibliography" class="link-underline">PKD</a>
+          <Link href="https://en.wikipedia.org/wiki/Philip_K._Dick_bibliography">PKD</Link>
           , the
-          <a href="https://en.wikipedia.org/wiki/Hyperion_(Simmons_novel)" class="link-underline">Hyperion Series</a>,
+          <Link href="https://en.wikipedia.org/wiki/Hyperion_(Simmons_novel)">Hyperion Series</Link>,
           and Greg Egan's
-          <a href="https://en.wikipedia.org/wiki/Permutation_City" class="link-underline">Permutation City.</a>
+          <Link href="https://www.gregegan.net/PERMUTATION/Permutation.html">Permutation City.</Link>
       </p>
     </section>
 
@@ -174,30 +175,19 @@ const experience = [
         </h2>
         <ul class="space-y-2 font-mono text-sm">
           <li>
-            <a
-              href="/resume.pdf"
-              class="link-underline"
-            >
+            <Link href="/resume.pdf">
               Resume (PDF)
-            </a>
+            </Link>
           </li>
           <li>
-            <a
-              href="https://github.com/JustinMeimar"
-              class="link-underline"
-              target="_blank"
-              rel="noopener"
-            >
+            <Link href="https://github.com/JustinMeimar">
               GitHub
-            </a>
+            </Link>
           </li>
           <li>
-            <a
-              href="mailto:meimar@ualberta.ca"
-              class="link-underline"
-            >
+            <Link href="mailto:meimar@ualberta.ca" external={false}>
               Email
-            </a>
+            </Link>
           </li>
         </ul>
       </section>

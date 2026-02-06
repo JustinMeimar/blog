@@ -1,0 +1,20 @@
+---
+interface Props {
+  href: string;
+  class?: string;
+  external?: boolean;
+}
+
+const { href, class: className = "", external = true } = Astro.props;
+const isExternal = external || href.startsWith('https://');
+
+---
+
+<a
+  href={href}
+  class:list={["link-underline", className]}
+  target={isExternal ? "_blank" : undefined}
+  rel={isExternal ? "noopener" : undefined}
+>
+  <slot />
+</a>
