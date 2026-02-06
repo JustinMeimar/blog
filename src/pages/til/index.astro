@@ -1,0 +1,170 @@
+---
+import Base from "../../layouts/Base.astro";
+import Header from "../../components/Header.astro";
+import Footer from "../../components/Footer.astro";
+import TilPreview from "../../components/TilPreview.astro";
+import { getAllTILs } from "../../utils/til";
+
+const tils = await getAllTILs();
+
+function seededRandom(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+// Generate random width combination that sums to exactly 1.0
+// Each width is between minWidth and maxWidth
+function findWidthCombination(seed: number): number[] {
+  const minWidth = 0.25;
+  const maxWidth = 0.5;
+  const widths: number[] = [];
+  let remaining = 1.0;
+  let currentSeed = seed;
+
+  while (remaining > 0.001) {
+    if (remaining < minWidth) {
+      if (widths.length > 0) {
+        widths[widths.length - 1] += remaining;
+      }
+      break;
+    }
+    const maxPossible = Math.min(maxWidth, remaining);
+    const minPossible = minWidth;
+    const randomValue = seededRandom(currentSeed++);
+    const width = minPossible + randomValue * (maxPossible - minPossible);
+
+    widths.push(width);
+    remaining -= width;
+  }
+  return widths;
+}
+
+type Card = {
+  width: number;
+  height: number;
+  colSpan: number;
+  rowSpan: number
+};
+
+function generateGridLayout(numCards: number): Card[] {
+  const cards: Card[] = [];
+  let currentRow = 0;
+  let seed = 42;
+
+  while (cards.length < numCards) {
+    const rowWidths = findWidthCombination(seed++);
+    const rowHeight = 1;
+
+    const colSpans: number[] = [];
+    let totalCols = 0;
+
+    // First pass: round each width to nearest column
+    for (let i = 0; i < rowWidths.length; i++) {
+      const colSpan = Math.round(rowWidths[i] * 12);
+      colSpans.push(colSpan);
+      totalCols += colSpan;
+    }
+
+    // Second pass: distribute any rounding error
+    const diff = 12 - totalCols;
+    if (diff !== 0) {
+      const maxIdx = colSpans.indexOf(Math.max(...colSpans));
+      colSpans[maxIdx] += diff;
+    }
+
+    // Create cards for this row
+    for (let i = 0; i < rowWidths.length; i++) {
+      if (cards.length >= numCards) break;
+
+      // Convert height to row units (base unit = 8rem = h-32)
+      const rowSpan = Math.round(rowHeight * 2);
+      cards.push({
+        width: rowWidths[i],
+        height: rowHeight,
+        colSpan: colSpans[i],
+        rowSpan
+      });
+    }
+    currentRow++;
+  }
+  return cards;
+}
+
+const gridLayout = generateGridLayout(tils.length);
+
+function getHeightClass(rowSpan: number): string {
+  const heights: Record<number, string> = {
+    1: 'h-32',
+    2: 'h-40',
+    3: 'h-48',
+    4: 'h-64',
+  };
+  return heights[rowSpan] || 'h-40';
+}
+
+function getColSpanClass(colSpan: number): string {
+  const colSpans: Record<number, string> = {
+    1: 'col-span-1',
+    2: 'col-span-2',
+    3: 'col-span-3',
+    4: 'col-span-4',
+    5: 'col-span-5',
+    6: 'col-span-6',
+    7: 'col-span-7',
+    8: 'col-span-8',
+    9: 'col-span-9',
+    10: 'col-span-10',
+    11: 'col-span-11',
+    12: 'col-span-12',
+  };
+  return colSpans[colSpan] || 'col-span-6';
+}
+
+---
+
+<Base
+  title="TIL"
+  description="Today I Learned"
+>
+  <div class="max-w-2xl mx-auto px-6 py-12 md:py-20">
+    <Header activeSection="til" />
+
+    <div class="mb-8 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
+
+    <section class="animate-fade-up stagger-2">
+      {
+        tils.length > 0 ? (
+          <div class="grid grid-cols-12 gap-3 auto-rows-min">
+            {tils.map((til, i) => {
+              const layout = gridLayout[i];
+              const heightClass = getHeightClass(layout.rowSpan);
+              const colSpanClass = getColSpanClass(layout.colSpan);
+              return (
+                <div class={colSpanClass}>
+                  <TilPreview
+                    title={til.data.title}
+                    description={til.data.description}
+                    publishDate={til.data.publishDate}
+                    slug={til.id}
+                    tags={til.data.tags}
+                    index={i}
+                    heightClass={heightClass}
+                    content={til.body}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p class="font-serif text-sm text-[var(--text-muted)] italic">
+            No TIL entries yet. Check back soon.
+          </p>
+        )
+      }
+    </section>
+
+    <div class="mt-20">
+      <Footer />
+    </div>
+  </div>
+</Base>

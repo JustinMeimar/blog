@@ -1,0 +1,67 @@
+---
+import { formatDate } from "../utils/til";
+
+interface Props {
+  title: string;
+  description?: string;
+  publishDate: Date;
+  slug: string;
+  tags?: string[];
+  index?: number;
+  heightClass?: string;
+  content?: string;
+}
+
+const { title, description, publishDate, slug, tags = [], index = 0, heightClass = 'h-40', content } = Astro.props;
+
+// Strip markdown syntax for plain text preview
+const contentPreview = content
+  ? content
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/`[^`]+`/g, '') // Remove inline code
+      .replace(/#{1,6}\s+/g, '') // Remove headings
+      .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold
+      .replace(/\*([^*]+)\*/g, '$1') // Remove italic
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+      .replace(/\n+/g, ' ') // Replace newlines with spaces
+      .trim()
+  : '';
+---
+
+<article
+  class:list={[
+    "group cursor-pointer p-3 transition-all duration-300",
+    "border border-[var(--border)] hover:border-[var(--text-muted)]",
+    "rounded",
+    "animate-fade-up",
+    `stagger-${Math.min(index + 3, 6)}`,
+    heightClass,
+    "flex flex-col",
+    "overflow-hidden",
+  ]}
+>
+  <a href={`/til/${slug}`} class="block flex-1 flex flex-col overflow-hidden">
+    <time class="font-mono text-[10px] text-[var(--text-faint)] mb-2 flex-shrink-0">
+      {formatDate(publishDate)}
+    </time>
+    <h3
+      class="font-serif text-sm mb-2 group-hover:underline decoration-1 underline-offset-4 leading-tight flex-shrink-0"
+    >
+      {title}
+    </h3>
+    {contentPreview && contentPreview.length > 0 && (
+      <p class="font-serif text-[11px] text-[var(--text-muted)] leading-relaxed mb-2 flex-1 overflow-hidden line-clamp-3">
+        {contentPreview}
+      </p>
+    )}
+    {tags.length > 0 && (
+      <div class="flex flex-wrap gap-1.5 mt-auto flex-shrink-0">
+        {tags.slice(0, 3).map((tag) => (
+          <span class="font-mono text-[9px] text-[var(--text-faint)]">
+            {tag}
+          </span>
+        ))}
+      </div>
+    )}
+  </a>
+</article>

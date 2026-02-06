@@ -1,0 +1,29 @@
+---
+import { getCollection, render } from "astro:content";
+import BlogPost from "../../layouts/BlogPost.astro";
+
+export async function getStaticPaths() {
+  const tils = await getCollection("til");
+  return tils.map((til) => ({
+    params: { slug: til.id },
+    props: { til },
+  }));
+}
+
+const { til } = Astro.props;
+const { Content, headings } = await render(til);
+
+// Filter to h2 and h3 only
+const tocHeadings = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+<BlogPost
+  title={til.data.title}
+  description={til.data.description ?? til.data.title}
+  publishDate={til.data.publishDate}
+  tags={til.data.tags}
+  headings={tocHeadings}
+  activeSection="til"
+>
+  <Content />
+</BlogPost>

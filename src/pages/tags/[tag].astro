@@ -4,17 +4,26 @@ import Base from "../../layouts/Base.astro";
 import Header from "../../components/Header.astro";
 import Footer from "../../components/Footer.astro";
 import PostPreview from "../../components/PostPreview.astro";
-import { getAllTags, getPostsByTag } from "../../utils/posts";
+import TilPreview from "../../components/TilPreview.astro";
+import { getAllTags as getAllPostTags, getPostsByTag } from "../../utils/posts";
+import { getAllTags as getAllTilTags, getTILsByTag } from "../../utils/til";
 
 export async function getStaticPaths() {
-  const tags = await getAllTags();
-  return [...tags.keys()].map((tag) => ({
+  const postTags = await getAllPostTags();
+  const tilTags = await getAllTilTags();
+
+  // Combine all unique tags
+  const allTags = new Set([...postTags.keys(), ...tilTags.keys()]);
+
+  return [...allTags].map((tag) => ({
     params: { tag },
   }));
 }
 
 const { tag } = Astro.params;
 const posts = await getPostsByTag(tag);
+const tils = await getTILsByTag(tag);
+
 const postsWithReadingTime = await Promise.all(
   posts.map(async (post) => {
     const { remarkPluginFrontmatter } = await render(post);
@@ -24,6 +33,8 @@ const postsWithReadingTime = await Promise.all(
     };
   })
 );
+
+const totalCount = posts.length + tils.length;
 ---
 
 <Base title={`#${tag} — justinmeimar`} description={`Posts tagged with #${tag}`}>
@@ -43,7 +54,7 @@ const postsWithReadingTime = await Promise.all(
         <span class="text-[var(--text-muted)]">#</span>{tag}
       </h1>
       <p class="font-serif text-lg text-[var(--text-muted)] leading-relaxed mb-12">
-        {posts.length} {posts.length === 1 ? "post" : "posts"} tagged with #{tag}
+        {totalCount} {totalCount === 1 ? "item" : "items"} tagged with #{tag}
       </p>
     </section>
 
@@ -51,9 +62,13 @@ const postsWithReadingTime = await Promise.all(
     <div class="mb-12 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
 
     <section class="animate-fade-up stagger-2">
-      {
-        postsWithReadingTime.length > 0 ? (
-          <div class="space-y-8">
+      {/* Posts Section */}
+      {postsWithReadingTime.length > 0 && (
+        <>
+          <h2 class="font-mono text-xs tracking-widest uppercase text-[var(--text-faint)] mb-6">
+            Posts ({posts.length})
+          </h2>
+          <div class="space-y-8 mb-12">
             {postsWithReadingTime.map((post, i) => (
               <PostPreview
                 title={post.data.title}
@@ -65,12 +80,38 @@ const postsWithReadingTime = await Promise.all(
               />
             ))}
           </div>
-        ) : (
-          <p class="font-serif text-sm text-[var(--text-muted)] italic">
-            No posts found.
-          </p>
-        )
-      }
+        </>
+      )}
+
+      {/* TILs Section */}
+      {tils.length > 0 && (
+        <>
+          <h2 class="font-mono text-xs tracking-widest uppercase text-[var(--text-faint)] mb-6">
+            TILs ({tils.length})
+          </h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {tils.map((til, i) => (
+              <TilPreview
+                title={til.data.title}
+                description={til.data.description}
+                publishDate={til.data.publishDate}
+                slug={til.id}
+                tags={til.data.tags}
+                index={i}
+                heightClass="h-40"
+                content={til.body}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* No results */}
+      {totalCount === 0 && (
+        <p class="font-serif text-sm text-[var(--text-muted)] italic">
+          No posts or TILs found with this tag.
+        </p>
+      )}
     </section>
 
     <div class="mt-20">

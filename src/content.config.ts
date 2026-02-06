@@ -72,4 +72,18 @@ const project = defineCollection({
     }),
 });
 
-export const collections = { post, project };
+const til = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/til" }),
+  schema: z.object({
+    title: z.string().max(80),
+    description: z.string().max(160).optional(),
+    publishDate: z.coerce.date(),
+    tags: z
+      .array(z.string())
+      .default([])
+      .transform((val) => [...new Set(val.map((t) => t.toLowerCase()))]),
+    draft: z.boolean().default(false),
+  }),
+});
+
+export const collections = { post, project, til };

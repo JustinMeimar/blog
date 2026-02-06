@@ -20,9 +20,10 @@ interface Props {
   ogImage?: string;
   minutesRead?: string;
   headings?: Heading[];
+  activeSection?: 'writing' | 'projects' | 'til';
 }
 
-const { title, description, publishDate, updatedDate, tags = [], ogImage, minutesRead, headings = [] } = Astro.props;
+const { title, description, publishDate, updatedDate, tags = [], ogImage, minutesRead, headings = [], activeSection = 'writing' } = Astro.props;
 
 const showToc = headings.length > 3;
 ---
@@ -76,7 +77,7 @@ const showToc = headings.length > 3;
   )}
 
   <div class={`mx-auto px-6 py-12 md:py-20 ${showToc ? 'max-w-6xl' : 'max-w-3xl'}`}>
-    <Header activeSection="writing" />
+    <Header activeSection={activeSection} />
 
     <div class={showToc ? 'lg:grid lg:grid-cols-[1fr_220px] lg:gap-12' : ''}>
     <article class="animate-fade-up stagger-1 max-w-3xl" data-pagefind-body>
@@ -142,11 +143,11 @@ const showToc = headings.length > 3;
 
         <!-- Back to posts -->
         <a
-          href="/posts"
+          href={activeSection === 'til' ? '/til' : '/posts'}
           class="inline-flex items-center gap-2 font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
         >
           <span>←</span>
-          <span>Back to all posts</span>
+          <span>Back to all {activeSection === 'til' ? 'TILs' : 'posts'}</span>
         </a>
 
         <!-- Comments -->
