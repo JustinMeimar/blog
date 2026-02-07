@@ -5,18 +5,18 @@ description: "JavaScript can Debug JavaScript at Runtime."
 tags: ["til", "sm"]
 ---
 
-Dynamic languages sometimes expose runtime debugging APIs.
+Dynamic languages can expose runtime debugging APIs.
 For example, `pdb` lets a python program debug itself. For
 SpiderMonkey, an equivalent mechanism is provided for a JavaScript
 program to debug itself via the `Debugger` object.
-
 
 This example shows the creation of a Debugger at runtime. We
 bind `this`, the global JS object, as the debugee, the "thing being
 debugged," while the debugger object itself lives in a separate compartment.
 This detail is essential, since it imposes the debugger be created in a
 memory and garbage collection space logically separated from other compartments.
-Otherwise, we could trigger an infinite recursion of the debugger debugging itself.
+Otherwise, we could trigger an infinite recursion of the debugger debugging
+itself.
 
 ```js
 // Debugger must live in separate global to avoid observing itself.
@@ -24,7 +24,6 @@ Otherwise, we could trigger an infinite recursion of the debugger debugging itse
 // memory and garbage collection boundary.
 var debuggerGlobal = newGlobal({newCompartment: true});
 debuggerGlobal.debuggeeGlobal = this;
-
 // The function we want to set a debugger event in.
 function factorial(n) {
     if (n <= 1) {
@@ -33,26 +32,19 @@ function factorial(n) {
         return 1;
     }
     return n * factorial(n - 1);
-} 
-
+}
 // Evaluates our debugger hook, wrapped in an IIFE, in the
-// debuggers compartment.  
+// debuggers compartment.
 debuggerGlobal.eval("(" + function() {
     var dbg = new Debugger(debuggeeGlobal);
-    
     // Hook to fire on debugger statements
     dbg.onDebuggerStatement = function(frame) {
-        print("Hit debugger statement:");
-        print("  this = " + frame.this);
-        print("  Stack depth: " + frame.depth);
-        for (var f = frame; f; f = f.older) {
-            print(" ^ " + (f.callee ? f.callee.name : "global"));
-        }
+      for (var f = frame; f; f = f.older) {
+        print(f.callee?.name);
+      }
     };
 } + ")();");
-
 factorial(5);
-
 ```
 Once we are in a debug hook, we can access the frame of the function
 which was trapped and inspect it as if it were regular data. We can
