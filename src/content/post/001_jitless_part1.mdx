@@ -1,5 +1,5 @@
 ---
-title: "Bootstrapping an AOT Interpreter for SpiderMonkey [DRAFT]"
+title: "Bootstrapping an AOT Interpreter for SpiderMonkey"
 publishDate: 2026-02-12
 description: "Patching Pointers to Supply a Runtime Generated Interpreter at Compile Time."
 tags: ["cpp", "jit", "spidermonkey"]
@@ -10,10 +10,10 @@ import BlogImage from '../../components/BlogImage.astro';
 
 You may have heard that high performance interpreters are commonly
 written in assembly. The advantages of doing so include attaining fine
-grined control flow, predictable branching patterns, manual code
-layout, and escpaing the C calling convention. SpiderMonkey's baseline
+grained control flow, predictable branching patterns, manual code
+layout, and escaping the C calling convention. SpiderMonkey's baseline
 interpreter is no exception. What may surprise you, however, is that
-SpiderMonkey's Baseline Interprer is _generated at runtime_.
+SpiderMonkey's Baseline Interpreter is _generated at runtime_.
 
 What does it mean for the interpreter to be _generated_? Similar to
 any other JIT code in the engine, we allocate a buffer on the heap,
@@ -21,29 +21,28 @@ write some instructions into it, memory map it to executable, then
 jump into it.
 
 The more important question to ask is, why would an interpreter be
-generated? Sure, JIT compilers are proliferated with runtime generated
-code, but that is primarily due to dynamic type information. An
-interpreter has deterministic structure - doesn't it? Why should it
-not be a regular compiled object available at link time? To
-understand, we'll take a dive into some SpiderMonkey internals. We
-will see why a runtime generated interpreter makes ergonomic sense,
-how it yields some slight performance bennefits, and what the
-challenges are for providing it AOT.
+generated? Sure, JIT compilers use runtime generated code, but that is
+primarily due to dynamic type information. An interpreter has
+deterministic structure - doesn't it? Why should it not be a regular
+compiled object available at link time? To understand, we'll take a
+dive into some SpiderMonkey internals. We will see why a runtime
+generated interpreter makes ergonomic sense, how it yields some slight
+performance benefits, and what the challenges are for providing it
+AOT.
 
 > This work is part of an ongoing project to improve "jitless" mode
 for SpiderMonkey. At present, the AOT baseline interpreter is purely
-expirimental. We are passing ~95% of JIT tests and will take some time
-to make prodution quality.
+experimental. We are passing ~95% of JIT tests and will take some time
+to make production quality.
 
 ## Macro Assemblers
 
-While the fine-grained precision of assembly is essential for
-performance, the platform dependency and poor developer experience
-makes _actually_ writing an interpreter in assembly a grueling task.
-Instead, developers find convenience in using a productive high level
-language, like C++ to emit assembly for them. What results is a high
-level interface for emitting assembly. In SpiderMonkey, this interface
-is called the
+While the precision of assembly is essential for the intricate
+performance details, the developer experience of writing assembly is
+quite poor. _Actually_ writing an interpreter in assembly is a
+grueling task. Instead, developers use high level languages, like C++
+in our case, to emit assembly for them. In SpiderMonkey, this
+interface is called the
 [MacroAssembler](https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#).
 
 ```c++
@@ -52,62 +51,70 @@ class MacroAssembler {
   public:
     void load(Register dst, Register src);
     void store(Register dst, Register src);
-    void add(Register src1, Register src2, Register dst)
-    void jmp(Register dst)
+    void add(Register src1, Register src2, Register dst);
+    void jmp(Register dst);
 };
 ```
 
 Using such an interface provides more than just developer ergonomics.
-It also facilitates a much needed layer of abstraction between the
-architecture specifics and describing computation. No abstraction is
-perfectly leak-free, with some [quirks existing with ARM]() for
-example. But overall, a `load`, `store` or `add` are perfectly
-reasonable operations to abstract across architectures. With a
-macro-assembler, the code is more self-explanatory than raw assembly,
-and we only need to maintain the backends, not the program itself
-across various architectures. Maintaining parallel interpreter
-implemtations is difficult, as V8 formerly learned while balancing 8
-implementations at once [CITE]
+It also facilitates a much needed layer of abstraction between
+describing the computation and the architectural specifics. While no
+abstraction is perfectly leak-free (see some [quirks with ARM]() for
+example), overall, a `load`, `store` or `add` are perfectly reasonable
+operations to abstract.
+
+For a second reason, using a macro-assembler makes the code more
+self-explanatory than raw assembly. We can design compound functions
+like [emitStackFrame]() that are built from primitives.
+
+Lastly and most crucially, we only need to maintain the backends
+responsible for correctly lowering the program, not the program
+itself. Maintaining parallel interpreter implementations is quite
+difficult, as V8 learned while [balancing several implementations at
+once]().
 
 ## Generated Interpreter
 
 Now we understand why interpreters are not written in assembly
-directly. The MASM interface is one reason why the interpreter is
-generated, it is simple to reuse the codgen infrastructure for JIT
-code. But if that were the only reason, the boostraping required to
-provide it AOT would be simple. We simply generate the interpreter,
-dump it to a file, attach it as a build input and rebuild.
+directly. Returning to answer the question of why the interpreter is
+generated - one reason is the MASM itself is only available at runtime.
+However, if this were the only reason, the bootstrapping process to
+provide the interpreter AOT would be simple. We simply generate the
+interpreter, dump it to a file, attach it as a build input and
+rebuild.
 
 <BlogImage src="/images/jitless_part1/bootstrap.svg" alt="AOT blob
 structure showing code and patches" darkMode="invert" />
 
-Unfortunately, it is not quite as simple. Since the interpreter is
+Unfortunately, it is not quite so simple. Since the interpreter is
 generated relatively late in the startup lifecycle, the clever
 engineers at Mozilla noticed that they could bake in addresses of
-runtime objects directly into the interpreter handlers, profiling and
-debugging infrastructure, and, most importantly, the op handler
-addresses into the dispatch table. This is the performance convenience
-I mentioned earlier; it is also the very reason for which
-bootstrapping the interpreter is difficult.
-
+runtime objects directly into the interpreter code, such as opcode
+handlers, profiling and debugging infrastructure, and, most
+importantly, the addresses in the dispatch table. This is the
+performance convenience I mentioned earlier; it is also the very
+reason for which bootstrapping the interpreter is difficult.
 
 ## To Patch or Indirect
 
 There are two main strategies we can take to fix our baked in runtime
-poitner problem. First is pointer patching. Suppose we augment the
-interpreter generation to accumulate a comensurate metadata structure
-to accompany our AOT blob. Each time we emit an absolute address, we
-record a `RuntimePatch`, a small struct which records an offset, the
-kind of pointer to patch, and an additional payload if necessary. An
-array of `RuntimePatch` structs are serailzed into the blob, then at
-load time in the second run, we can parse and apply these patches.
+pointer problem. First is pointer patching. Suppose we augment the
+interpreter codegen to accumulate a metadata structure to accompany
+our AOT blob. Each time we emit an absolute address, we record a
+`RuntimePatch`, a small struct which records an offset, the kind of
+pointer to patch, and an additional payload if necessary. An array of
+`RuntimePatch` structs are serialized to the bottom of the blob. In a
+second build, we disassemble this binary into a `.s` which can be
+registered as a build input. With the AOT code as regular code, at
+load-time we can then parse and apply these patches.
 
 ```c++
 /// A simplified RuntimePatch structure. We track a variant for
-/// every type of runtime poitner we encounter. The PatchContext
+/// every type of runtime pointer we encounter. The PatchContext
 /// is provided at load-time to attain the correct values for the
 /// runtime pointers. With the offsets retained at registration
-/// we can hydrate, to borrow a term from webdev, the binary.
+/// we can "hydrate", to borrow a term from webdev, the binary
+/// with the correct pointers.
 class RuntimePatch {
   public:
     enum class Kind : uint16_t {
@@ -138,37 +145,36 @@ class RuntimePatch {
 ```
 
 We implemented a patch mechanism for the `BaselineCodeGen` class. This
-worked great for runtime pointers emited directly. However, we
+worked great for runtime pointers emitted directly. However, we
 encountered many runtime pointers which were emitted in nested calls
 into the MacroAssembler. The `MacroAssembler` class does a lot of
-lifting for the codegen in SpiderMonkey. Various external
-projects depend on the API masm exposes. For that reason, injecting
-our patch accumualtor into the scope of the masm, either through
-parameters or class members, was not a viable solution; the tolerance
-for coupling with the masm is super low.
+lifting for the codegen in SpiderMonkey. Various external projects
+depend on the API masm exposes. For that reason, injecting our patch
+accumulator into the scope of the masm, either through parameters or
+class members, was not a viable solution; the tolerance for coupling
+with the masm is super low.
 
 That sets the stage for our second strategy - solving through
 indirection. Raw runtime pointers are typically used to load some
 field from the `JSRuntime`, or `JSContext`. Rather than relying on the
-absolute address, perhaps we could load it from some predicable
+absolute address, perhaps we could load it from some predictable
 location. Once loaded, we could even pin the pointer in a register to
 ensure it is always available, making the indirections we introduce
-slightly less coslty. For baseline interpreter generation, we pass a
-`JSZone` pointer in the `BaselineFrame` which facillitates the
+slightly less costly. For baseline interpreter generation, we pass a
+`JSZone` pointer in the `BaselineFrame` which facilitates the
 transition between host C++ code and the JIT compiled baseline
 interpreter. Immediately in the prologue we load the zone pointer into
 a register, then compute the runtime pointers through indirection on
 this register.
 
 
-> * For architectures like x86-32, free registers are not
-an abundant resource, we need to implement falling back to loading
-from the frame each time.
+> * For architectures like x86-32 where free registers are not an abundant
+resource, we need to fall back to loading from the frame each time.
 
 > * For ICStubs, as we will talk about in part 2, we put a `JSZone*`
-pointer into the `ICStub` data class. [Chase]() worked in this in
-parallel, and we think we can consolidate to using the potentially
-BaselineFrame.
+pointer into the `ICStub` data class. [Chase]() worked on this in
+parallel, and we think we can consolidate to using the `JSZone*` from
+the BaselineFrame instead.
 
 
 ## Emit an Opcode
@@ -192,16 +198,17 @@ bool BaselineInterpreterCodeGen::emit_Symbol() {
 }
 ```
 
-In the `movePtr` we see the baked-in runtime pointer in action.
-The JavaScript runtime is a large, complex object whose heap allocation
-is non-deterministic, so we may only know its final address at runtime.
-Since the generated interpreter comes last in the temporal dependency
-chain, it can simply find the existing runtime and embed pointers to its
-members directly. This saves us from emitting position independent
-lookups - in this case just an extra load and add, but some runtime
-pointers are accessible only through _several layers_ of indirection
-from the base runtime pointer. If those extra loads and adds occur on a
-hot path, the cost adds up.
+In the `movePtr` we see the baked-in runtime pointer to the address of
+`wellKnownSymbols`. Once again, because the JavaScript runtime is a
+large, complex object whose allocation is non-deterministic, we may
+only know its final address at runtime. Since the generated
+interpreter comes last in the temporal dependency chain, it can simply
+find the existing runtime and embed pointers to its members directly.
+This saves us from emitting position independent lookups. While this is
+just an extra load and add in this case, some runtime pointers are
+accessible only through _several layers_ of indirection from the base
+runtime pointer. If those extra loads and adds occur on a hot path,
+the cost adds up.
 
 With our AOT patch mechanism in place, the emission becomes:
 ```c++
@@ -244,8 +251,8 @@ You can see the `0xdeadbeef` sentinel sitting in the `mov rbx`
 instruction, waiting to be patched at load time. The tail of the
 handler illustrates the threaded dispatch - we index into the dispatch
 table and perform a computed jump directly to the next opcode handler,
-avoiding a return into a central dispatch location such as the header of
-a switch statement.
+avoiding a return into a central dispatch location such as the header
+of a switch statement.
 
 ## Conclusion
 
