@@ -1,67 +1,181 @@
 ---
 title: "Bootstrapping an AOT Interpreter for SpiderMonkey [DRAFT]"
-publishDate: 2026-02-03
+publishDate: 2026-02-12
 description: "Patching Pointers to Supply a Runtime Generated Interpreter at Compile Time."
 tags: ["cpp", "jit", "spidermonkey"]
 ---
 
-You may have heard that high performance interpreters are commonly written in
-assembly. It may be surprising, however, to hear that SpiderMonkey's
-_threaded baseline interpreter_ is generated at runtime. Why would an interpreter be generated?
-JIT compilers are proliferated with runtime generated code due to dynamic type information,
-but an interpreter has deterministic structure - doesn't it? Why should it not be a
-regular compiled object to be linked into the engine binary? To understand, let's take
-a look at how assembler interfaces are designed. We will see how a runtime generated
-interpreter has developer ergonomic as well as some performance benefits. 
+import BlogImage from '../../components/BlogImage.astro';
+
+
+You may have heard that high performance interpreters are commonly
+written in assembly. The advantages of doing so include attaining fine
+grined control flow, predictable branching patterns, manual code
+layout, and escpaing the C calling convention. SpiderMonkey's baseline
+interpreter is no exception. What may surprise you, however, is that
+SpiderMonkey's Baseline Interprer is _generated at runtime_.
+
+What does it mean for the interpreter to be _generated_? Similar to
+any other JIT code in the engine, we allocate a buffer on the heap,
+write some instructions into it, memory map it to executable, then
+jump into it.
+
+The more important question to ask is, why would an interpreter be
+generated? Sure, JIT compilers are proliferated with runtime generated
+code, but that is primarily due to dynamic type information. An
+interpreter has deterministic structure - doesn't it? Why should it
+not be a regular compiled object available at link time? To
+understand, we'll take a dive into some SpiderMonkey internals. We
+will see why a runtime generated interpreter makes ergonomic sense,
+how it yields some slight performance bennefits, and what the
+challenges are for providing it AOT.
+
+> This work is part of an ongoing project to improve "jitless" mode
+for SpiderMonkey. At present, the AOT baseline interpreter is purely
+expirimental. We are passing ~95% of JIT tests and will take some time
+to make prodution quality.
 
 ## Macro Assemblers
 
-While high performance interpreters are etched out with the fine-grained precision of
-assembly, the interpreter writer still finds convenience in using a productive high
-level language, like C++, to emit the assembly. What emerges is a C++ interface for
-emitting assembly, something like so. In SpiderMonkey, this interface is called
-the [MacroAssembler](https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#).
+While the fine-grained precision of assembly is essential for
+performance, the platform dependency and poor developer experience
+makes _actually_ writing an interpreter in assembly a grueling task.
+Instead, developers find convenience in using a productive high level
+language, like C++ to emit assembly for them. What results is a high
+level interface for emitting assembly. In SpiderMonkey, this interface
+is called the
+[MacroAssembler](https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#).
 
 ```c++
-class Assembler {
+// A simple MacroAssembler interface.
+class MacroAssembler {
   public:
     void load(Register dst, Register src);
     void store(Register dst, Register src);
     void add(Register src1, Register src2, Register dst)
+    void jmp(Register dst)
 };
 ```
 
-Using such an interface provides more than just developer ergonomics. It also facilitates
-a much needed layer of abstraction between the architecture specific assembly and a
-platform agnostic version. The `MacroAssembler` can be an abstract base class with derived
-classes implemented for specific architectures, like `MacroAssembler-x86-64`.
-No abstraction is perfectly leak-free, with some quirks with ARM for example.
-Nonetheless, building a MacroAssembler is one of the first things you will typically
-do when providing production code generation tooling. Projects like LLVM follow a similar
-adapter pattern with `LLVM-IR` acting as a platform agnostic assembly.
+Using such an interface provides more than just developer ergonomics.
+It also facilitates a much needed layer of abstraction between the
+architecture specifics and describing computation. No abstraction is
+perfectly leak-free, with some [quirks existing with ARM]() for
+example. But overall, a `load`, `store` or `add` are perfectly
+reasonable operations to abstract across architectures. With a
+macro-assembler, the code is more self-explanatory than raw assembly,
+and we only need to maintain the backends, not the program itself
+across various architectures. Maintaining parallel interpreter
+implemtations is difficult, as V8 formerly learned while balancing 8
+implementations at once [CITE]
+
+## Generated Interpreter
+
+Now we understand why interpreters are not written in assembly
+directly. The MASM interface is one reason why the interpreter is
+generated, it is simple to reuse the codgen infrastructure for JIT
+code. But if that were the only reason, the boostraping required to
+provide it AOT would be simple. We simply generate the interpreter,
+dump it to a file, attach it as a build input and rebuild.
+
+<BlogImage src="/images/jitless_part1/bootstrap.svg" alt="AOT blob
+structure showing code and patches" darkMode="invert" />
+
+Unfortunately, it is not quite as simple. Since the interpreter is
+generated relatively late in the startup lifecycle, the clever
+engineers at Mozilla noticed that they could bake in addresses of
+runtime objects directly into the interpreter handlers, profiling and
+debugging infrastructure, and, most importantly, the op handler
+addresses into the dispatch table. This is the performance convenience
+I mentioned earlier; it is also the very reason for which
+bootstrapping the interpreter is difficult.
 
 
-## Generating the Interpreter
+## To Patch or Indirect
 
-With the `MacroAssembler` being in place, we can take a look at how SpiderMonkey
-emits its threaded Baseline Interpreter.
+There are two main strategies we can take to fix our baked in runtime
+poitner problem. First is pointer patching. Suppose we augment the
+interpreter generation to accumulate a comensurate metadata structure
+to accompany our AOT blob. Each time we emit an absolute address, we
+record a `RuntimePatch`, a small struct which records an offset, the
+kind of pointer to patch, and an additional payload if necessary. An
+array of `RuntimePatch` structs are serailzed into the blob, then at
+load time in the second run, we can parse and apply these patches.
 
-> The term threaded means the interpreter
-is organized as a series of op-code handlers, each associated with a label. Rather than
-returning to a central path for dispatching to the subsequent op-code (like the header
-of a switch statement), a threaded interpreter instructs each op handler to compute
-the address of the subsequent operation by advancing the opcode pointer, using the
-opcode as an index into the dispatch table, and making an indirect jump to that handler.
-Thus the visualization of a needle weaving a thread of execution flow through a sporadic
-pattern of op handlers.
+```c++
+/// A simplified RuntimePatch structure. We track a variant for
+/// every type of runtime poitner we encounter. The PatchContext
+/// is provided at load-time to attain the correct values for the
+/// runtime pointers. With the offsets retained at registration
+/// we can hydrate, to borrow a term from webdev, the binary.
+class RuntimePatch {
+  public:
+    enum class Kind : uint16_t {
+      JitRuntime,
+      DispatchTable,
+      VMWrapper,
+      JitActivation,
+      RealmPtr,
+      ProfilerEnabled,
+      DebugTrapHandler
+    };
 
-This demonstrates the ergonomics of emitting an interpreter through a C++ interface.
-The code is more self-explanatory than raw assembly, and we only need to maintain the
-backends, not the program itself across various architectures, (as V8 formerly tried
-to do with 8 implementations at once.) If we peek into some of the opcodes however, we
-can observe the performance utility of a generated interpreter.
+    Kind kind;
+    uint32_t targetOffset;
+    union {
+      uint32_t handlerOffset;
+      VMFunctionId vmId;
+      DebugTrapHandlerKind dbgKind;
+    };
+    explicit RuntimePatch(Kind kind_, uint32_t targetOffset_) :
+      kind(kind_), targetOffset(targetOffset_) {}
+
+    void apply(const PatchContext& pc) const;
+  private:
+    RuntimePatch() = default;
+    uintptr_t _getValueToPatch(const PatchContext& pc) const;
+};
+```
+
+We implemented a patch mechanism for the `BaselineCodeGen` class. This
+worked great for runtime pointers emited directly. However, we
+encountered many runtime pointers which were emitted in nested calls
+into the MacroAssembler. The `MacroAssembler` class does a lot of
+lifting for the codegen in SpiderMonkey. Various external
+projects depend on the API masm exposes. For that reason, injecting
+our patch accumualtor into the scope of the masm, either through
+parameters or class members, was not a viable solution; the tolerance
+for coupling with the masm is super low.
+
+That sets the stage for our second strategy - solving through
+indirection. Raw runtime pointers are typically used to load some
+field from the `JSRuntime`, or `JSContext`. Rather than relying on the
+absolute address, perhaps we could load it from some predicable
+location. Once loaded, we could even pin the pointer in a register to
+ensure it is always available, making the indirections we introduce
+slightly less coslty. For baseline interpreter generation, we pass a
+`JSZone` pointer in the `BaselineFrame` which facillitates the
+transition between host C++ code and the JIT compiled baseline
+interpreter. Immediately in the prologue we load the zone pointer into
+a register, then compute the runtime pointers through indirection on
+this register.
 
 
+> * For architectures like x86-32, free registers are not
+an abundant resource, we need to implement falling back to loading
+from the frame each time.
+
+> * For ICStubs, as we will talk about in part 2, we put a `JSZone*`
+pointer into the `ICStub` data class. [Chase]() worked in this in
+parallel, and we think we can consolidate to using the potentially
+BaselineFrame.
+
+
+## Emit an Opcode
+
+Let's look at a concrete example. Here is the emission of the `Symbol`
+opcode, designed to load a well known symbol such as `Symbol.iterator`
+or `Symbol.toStringTag`.
 ```c++
 template <>
 bool BaselineInterpreterCodeGen::emit_Symbol() {
@@ -78,89 +192,33 @@ bool BaselineInterpreterCodeGen::emit_Symbol() {
 }
 ```
 
-This C++ handles the emission of the `Symbol` opcode, designed to load a well
-known symbol such as `Symbol.iterator` or `Symbol.toStringTag`, typical utilities
-for dynamic metaprogramming. In the first `movePtr` we observe the source of the
-performance - when the interpreter is runtime generated, we can bake runtime
-pointers directly into the assembly!
+In the `movePtr` we see the baked-in runtime pointer in action.
+The JavaScript runtime is a large, complex object whose heap allocation
+is non-deterministic, so we may only know its final address at runtime.
+Since the generated interpreter comes last in the temporal dependency
+chain, it can simply find the existing runtime and embed pointers to its
+members directly. This saves us from emitting position independent
+lookups - in this case just an extra load and add, but some runtime
+pointers are accessible only through _several layers_ of indirection
+from the base runtime pointer. If those extra loads and adds occur on a
+hot path, the cost adds up.
 
-The JavaScript runtime is a large, complex object whose allocation in the heap
-is non-deterministic. Therefore, we may only know its final address at runtime.
-Since, in the sequence of temporal dependency, the generated interpreter comes last,
-it can simply find the existing runtime and bake pointers to its members in directly.
-Great! This technique saves us from emitting position independent lookups. If the
-interpreter could not be generated for example, we may have needed to emit code to
-
-1. Load a pointer to the runtime object into a register. (LOAD)
-2. Compute the offset of the wellKnownSymbols member (ADD)
-
-In this instance we only incur an extra add. Not too big a deal. However, some runtime
-pointers may only be accessible through _several layers_ of indirection from the base
-runtime pointer. If these extra loads and adds occur in a hot path, we could be
-significantly slower.
-
-## Issues with Generating an Interpreter
-
-While the generated interpreter has some desirable convenience and performance
-attributes, there are some notable pain-points. First, while the data flowing through
-the interpreter is variable, in the form of the program (sequence of opcodes) being
-streamed through it, and in the form of the runtime pointers being baked into it,
-the code itself is deterministic. This means we pay cycles each time the engine
-is started to produce what is 99% the same. While this cost is constant, and
-amortized over a long running process, for fast startup it is not ideal.
-
-If we could find a way to provide the Baseline Interpreter AOT, without rewriting
-the fast, baked in runtime addresses, we could get the best of both worlds. We could
-even replace the generic C++ interpreter as the initial tier. Additionally, as we will
-talk about in pt.2, we could even supply an AOT corpus of statistically likely Inline Cache
-stubs to further accelerate the baseline interpreter. But before we get there, we must
-address the engineering challenge. How to make the baseline interpreter work as an
-AOT compilation object without introducing slow, position independent code?
-
-## Bootstrapping, Copying and Patching
-
-The Copy-and-Patch technique is a familiar term to JIT compiler engineers, introduced
-by Haoran Xu & Fredrik Kjolstad [1] in 2021 for performant baseline compilation.
-
-> I mention C&P here as the primary source of inspiration for our technique. There
-  are however, some differences. Fredrik and Kjolstad generate a corpus of op-handlers
-  for a dynamic bytecode language using linker relocation records to mark "holes" to patch
-  at startup time. This elides the cost of generating code and reduces it to only
-  those portions which are dynamic and variable. Such as the offset in the stack pointer
-  for accessing a local variable. Check out their paper for a much better explanation.
-
-Our technique is similar. As a thought experiment, if we write out the generated
-interpreter to a file, what exists is a quasi-static piece of code. It is 99% position
-independent, however, various runtime addresses remain baked in. We can set a mode in
-our baseline compilation to emit AOT code. Rather than runtime addresses, we bake in
-`0xdeadbeef`. At the same time, we record the current offset, and a `PatchKind` to
-register which kind of symbol we should patch this hole with at AOT load time.
-
-
-
+With our AOT patch mechanism in place, the emission becomes:
 ```c++
 #ifdef ENABLE_AOT_BASELINE
-    // Emit a movabs instruction with placeholder that will be patched at load time
     CodeOffset patchOffset = masm.movWithPatch(ImmPtr((void*)0xdeadbeef), scratch2);
     auto patch = RuntimePatch({
-      RuntimePatch::Kind::WellKnownSymbols,
-      static_cast<uint32_t>(patchOffset.offset() - sizeof(void*))
+      RuntimePatch::Kind::WellKnownSymbols, /* Patch type */
+      static_cast<uint32_t>(patchOffset.offset() - sizeof(void*)) /* Patch Offset */
     });
-    if (!aotAccumulator_.registerPatch(std::move(patch)))
-      MOZ_CRASH("Failed to apply patch");
+    aotAccumulator_.registerPatch(std::move(patch));
 #else
     masm.movePtr(ImmPtr(&runtime->wellKnownSymbols()), scratch2);
 #endif
 ```
 
-The code, along with a metadata manifest describing the patches, can then be written out
-and integrated into the subsequent build. Below is an example of `emit_Symbol` when
-written in AOT mode (comments mine).
-
+And the resulting AOT assembly for `emit_Symbol` (comments mine):
 ```asm
-movzbl     0x0(%r14), %ecx
-leaq       .Lfrom2618(%rip), %rbx
-jmp        *0x0(%rbx,%rcx,8)
 movzx      ecx, byte ptr [r14 + 1]
 # emit the sentinel value to be patched.
 mov        rbx, 0xdeadbeef
@@ -182,21 +240,17 @@ lea        rbx, [rip + dispatch_table]
 jmp        qword ptr [rbx + rcx*8]
 ```
 
-### Bootstrapping Infrastructure
+You can see the `0xdeadbeef` sentinel sitting in the `mov rbx`
+instruction, waiting to be patched at load time. The tail of the
+handler illustrates the threaded dispatch - we index into the dispatch
+table and perform a computed jump directly to the next opcode handler,
+avoiding a return into a central dispatch location such as the header of
+a switch statement.
 
-Performing a build can be conceptualized as traversing a DAG where source nodes are source
-files without dependencies. Compiling a node frees up one input dependency of its consumer.
-The optimal AOT bootstrapping in this context looks like finding the minimal subgraph required
-to spin up the engine and emit the baseline interpreter AOT blob, insert a new node into
-the dependency graph for the AOT interpreter, then continue on to complete the build.
+## Conclusion
 
-In reality, this is too complex for me to program right now, nor am I sure how conventional
-it is. So we just build the engine twice.
-
-
-### Conclusion
-
-Thank you for reading. Stay tuned for part 2, where we explore supplying an AOT Inline
-Cache stub corpus to make our AOT mode even faster!
+Thank you for reading. Stay tuned for part 2, where we explore
+supplying an AOT Inline Cache stub corpus to make our AOT mode even
+faster!
 
 

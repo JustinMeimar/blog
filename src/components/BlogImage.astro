@@ -1,0 +1,90 @@
+---
+/**
+ * BlogImage - Enhanced image component for blog posts
+ *
+ * Usage examples:
+ *
+ * Basic image:
+ * <BlogImage src="/images/jitless_part1/diagram.svg" alt="Architecture diagram" />
+ *
+ * Float right with text wrapping:
+ * <BlogImage src="/images/jitless_part1/photo.png" alt="Photo" float="right" />
+ *
+ * Dark mode - invert colors:
+ * <BlogImage src="/images/chart.svg" alt="Chart" darkMode="invert" />
+ *
+ * Dark mode - show border:
+ * <BlogImage src="/images/diagram.png" alt="Diagram" darkMode="border" />
+ *
+ * Dark mode - separate images:
+ * <BlogImage
+ *   src="/images/light-diagram.svg"
+ *   darkSrc="/images/dark-diagram.svg"
+ *   alt="Diagram"
+ * />
+ *
+ * With caption:
+ * <BlogImage
+ *   src="/images/example.png"
+ *   alt="Example"
+ *   caption="Figure 1: The example"
+ * />
+ *
+ * Size variants:
+ * <BlogImage src="/images/small.png" alt="Small" size="small" />
+ * <BlogImage src="/images/medium.png" alt="Medium" size="medium" />
+ */
+
+interface Props {
+  src: string;
+  alt: string;
+  darkSrc?: string;
+  caption?: string;
+  float?: 'left' | 'right';
+  darkMode?: 'invert' | 'border';
+  size?: 'small' | 'medium' | 'full';
+  class?: string;
+}
+
+const {
+  src,
+  alt,
+  darkSrc,
+  caption,
+  float,
+  darkMode,
+  size,
+  class: className = ''
+} = Astro.props;
+
+const floatClass = float ? `float-${float}` : '';
+const sizeClass = size ? `img-${size}` : '';
+const darkModeAttr = darkMode ? `data-theme-adapt="${darkMode}"` : '';
+
+const baseClasses = [floatClass, sizeClass, className].filter(Boolean).join(' ');
+---
+
+{caption ? (
+  <figure class={baseClasses}>
+    {darkSrc ? (
+      <>
+        <img src={src} alt={alt} data-theme="light-only" {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
+        <img src={darkSrc} alt={alt} data-theme="dark-only" />
+      </>
+    ) : (
+      <img src={src} alt={alt} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
+    )}
+    <figcaption>{caption}</figcaption>
+  </figure>
+) : (
+  <>
+    {darkSrc ? (
+      <>
+        <img src={src} alt={alt} data-theme="light-only" class={baseClasses} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
+        <img src={darkSrc} alt={alt} data-theme="dark-only" class={baseClasses} />
+      </>
+    ) : (
+      <img src={src} alt={alt} class={baseClasses} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
+    )}
+  </>
+)}

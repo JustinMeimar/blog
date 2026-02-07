@@ -291,7 +291,7 @@ body::before {
 
 /* Blockquotes */
 .prose blockquote {
-  font-style: italic;
+  font-style: oblique 6deg;
   color: var(--text-muted);
   border-left: 2px solid var(--border);
   padding-left: 1.5em;
@@ -434,14 +434,16 @@ body::before {
 
 /* Emphasis */
 .prose em {
+  font-style: oblique 6deg;
   color: var(--text-muted);
 }
 
 /* Images */
 .prose img {
-  max-width: 100%;
+  max-width: 80%;
   height: auto;
-  margin: 2em 0;
+  margin: 1.5em auto;
+  display: block;
   border-radius: 4px;
 }
 
@@ -455,6 +457,97 @@ body::before {
   color: var(--text-muted);
   text-align: center;
   margin-top: 0.75em;
+}
+
+/* Dark mode image adaptations */
+.prose img[data-theme-adapt="invert"] {
+  transition: filter 0.3s ease;
+}
+
+[data-theme="dark"] .prose img[data-theme-adapt="invert"] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.prose img[data-theme-adapt="border"] {
+  border: 1px solid var(--border);
+}
+
+/* Show/hide images based on theme */
+.prose img[data-theme="light-only"] {
+  display: block;
+}
+
+[data-theme="dark"] .prose img[data-theme="light-only"] {
+  display: none;
+}
+
+.prose img[data-theme="dark-only"] {
+  display: none;
+}
+
+[data-theme="dark"] .prose img[data-theme="dark-only"] {
+  display: block;
+}
+
+/* Floating images - text wrapping */
+.prose img.float-right,
+.prose figure.float-right {
+  float: right;
+  margin: 0.5em 0 1em 2em;
+  max-width: 40%;
+}
+
+.prose img.float-left,
+.prose figure.float-left {
+  float: left;
+  margin: 0.5em 2em 1em 0;
+  max-width: 40%;
+}
+
+/* Responsive: disable floating on mobile */
+@media (max-width: 768px) {
+  .prose img.float-right,
+  .prose img.float-left,
+  .prose figure.float-right,
+  .prose figure.float-left {
+    float: none;
+    max-width: 100%;
+    margin: 2em 0;
+  }
+}
+
+/* Clear floats helper */
+.prose .clear {
+  clear: both;
+}
+
+/* Image size variants */
+.prose img.img-small,
+.prose figure.img-small {
+  max-width: 50%;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+.prose img.img-medium,
+.prose figure.img-medium {
+  max-width: 75%;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+.prose img.img-full {
+  max-width: 100%;
+  width: 100%;
+}
+
+/* Center images by default when they have a figure wrapper */
+.prose figure > img {
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
 }
 
 /* Selection */

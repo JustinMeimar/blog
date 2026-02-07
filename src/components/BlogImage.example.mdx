@@ -1,0 +1,57 @@
+---
+title: "Image Examples"
+description: "Quick examples of using BlogImage"
+---
+
+import BlogImage from '@/components/BlogImage.astro';
+
+# Image Usage Examples
+
+## Basic Image
+
+<BlogImage
+  src="/images/rust-collection-ownership/move.excalidraw.svg"
+  alt="Move semantics diagram"
+/>
+
+Some text after the image.
+
+## Float Right
+
+<BlogImage
+  src="/images/rust-collection-ownership/move_after.excalidraw.svg"
+  alt="After move"
+  float="right"
+/>
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. The image floats to the right and text wraps around it naturally. This works great for smaller supporting images that complement your explanation. On mobile, the float is automatically disabled for better readability.
+
+More text continues to wrap around the floating image until we run out of vertical space or add a clear div.
+
+<div class="clear"></div>
+
+## Dark Mode - Invert
+
+<BlogImage
+  src="/images/rust-collection-ownership/mutrefvec.excalidraw.svg"
+  alt="Mutable reference"
+  darkMode="invert"
+/>
+
+This diagram will invert its colors in dark mode.
+
+## With Caption
+
+<BlogImage
+  src="/images/rust-collection-ownership/mutrefvec_after.excalidraw.svg"
+  alt="After mutation"
+  caption="Figure 1: Vector after mutable reference modification"
+/>
+
+## Small Size
+
+<BlogImage
+  src="/images/mygoph.png"
+  alt="Gopher"
+  size="small"
+/>
