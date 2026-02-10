@@ -1,0 +1,54 @@
+---
+title: "AOT Inline Caches in SpiderMonkey"
+publishDate: 2026-02-12
+description: "Extending our AOT Infrastructure to Inline Cache Stubs"
+tags: ["cpp", "jit", "spidermonkey"]
+---
+
+This is part two in a series about boostrapping JIT code into AOT code
+in SpiderMonkey. Last time we introduced the strategy we are taking
+for deterministic AOT code, namely the baseline interpreter and
+trampolines. This time we will motivate extending this infrastrucutre
+to statistically likely code. Our primary target is Inline Cache (IC)
+stubs. These bytecode local data structures instrument the interpreter
+to observe the runtime type information flowing through an opcode. For
+example, suppose we have a functin like so:
+
+```js
+function blind_access_and_add(x, y) {
+    return x.foo + y.foo;
+}
+```
+
+Because JavaScript is dynamically typed, the bytecode produced from
+this function includes several guards - runtime checks which ensure it
+is legal to apply an operators in the given context. Guards make
+JavaScript typesafe at runtime, but like any runtime solution, they
+incur a perforance cost. Inline Cache stubs are an optimization which
+cache the observed operand types for the operation and use them like
+keys to dispatch into a high-performance native "stub" specailzied for
+the types.
+
+A common first impression when learning about IC stubs is that they
+must produce rather short JITcode. How many instructions could we
+really be saving by eliding the interpretation of a simple add for a
+native version? For some operators in particular, like `x.foo`, you
+may be suprised. JavaScript uses a [protoype chain]() object model in
+which properties may be in dynamic slots of parent objects, meaning we
+must traverse up the prototype chain arbitrarily, _just to see if a
+propert exists.
+
+TODO: Example of prototype chain traversal for property access.
+
+With that in mind, we can see how an IC stub speeds up performance,
+and why we might want to supply a corpus of statistically likely stubs
+to be ready out of the box. Before we get there however, lets
+understand the mechanisms for dispatching IC stubs.
+
+TODO: Introduce the IC stub data class.
+
+## The AOT mechanism
+
+SpiderMonkey already had some infrasturcture in place for AOT stubs. Chris
+Fallin designed an AOT stub system for   designed an AOT stub system for 
+
