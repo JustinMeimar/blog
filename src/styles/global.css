@@ -53,7 +53,7 @@
   --color-bg-dark: #0c0a09;
   --color-bg-paper-dark: #1c1917;
   --color-text-dark: #d6d3d1;
-  --color-text-muted-dark: #78716c;
+  --color-text-muted-dark: #a8a29e;
   --color-text-faint-dark: #57534e;
   --color-border-dark: #292524;
   --color-accent-dark: #a8a29e;
@@ -291,7 +291,7 @@ body::before {
 
 /* Blockquotes */
 .prose blockquote {
-  font-style: oblique 6deg;
+  font-style: italic;
   color: var(--text-muted);
   border-left: 2px solid var(--border);
   padding-left: 1.5em;
@@ -434,7 +434,6 @@ body::before {
 
 /* Emphasis */
 .prose em {
-  font-style: oblique 6deg;
   color: var(--text-muted);
 }
 
