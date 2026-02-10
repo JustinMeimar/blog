@@ -19,7 +19,9 @@ branching patterns](https://llvm.org/docs/BranchWeightMetadata.html),
 layout](https://sillycross.github.io/2023/05/12/2023-05-12/), and
 escaping the C calling convention. SpiderMonkey's baseline interpreter
 is no exception. What may surprise you, however, is that
-SpiderMonkey's Baseline Interpreter is _generated at runtime_.
+SpiderMonkey's [Baseline
+Interpreter](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.h#582)
+is _generated at runtime_.
 
 What does it mean for the interpreter to be _generated_? The
 simplified picture is that, similar to any other JIT code in the
@@ -37,21 +39,20 @@ performance benefits, and what the challenges are for providing it
 AOT.
 
 
-This work is part of an ongoing project to improve [Jitless mode]()
-for SpiderMonkey. In this post, we introduce the bootstrapping
-infrastructure for the AOT baseline interpreter, which involves
-dumping runtime generated code, rebuilding and patching at load time.
-In later posts, we may talk about extending this infrastructure to
-trampolines, AOT Inline Cache stubs and other code.
-
+This work is part of an ongoing project to develop a Jitless mode for
+FireFox (see [V8's blog](https://v8.dev/blog/jitless) for a good
+introduction to the concept.) In this post, we introduce the
+bootstrapping infrastructure for the AOT baseline interpreter, which
+involves dumping runtime generated code, rebuilding and patching at
+load time. In later posts, we may talk about extending this
+infrastructure to trampolines, AOT Inline Cache stubs and other areas
+of the engine.
 
 ## Macro Assemblers
 
-Assembly allows a programmer to chisel out the intracite control flow
-rquired for an interpreter. But actually writing one in pure assembly
-is a grueling task. Instead, developers use high level languages, like
-C++ in our case, to emit assembly for them. In SpiderMonkey, this
-interface is called the
+Actually writing an interpreter in pure assembly is a grueling task.
+Instead, developers use high level languages to emit assembly for
+them. In SpiderMonkey, this interface is called the
 [MacroAssembler](https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#).
 Analogous interfaces exist in other engines, such as
 [DynASM](https://luajit.org/dynasm.html) in LuaJIT and V8's
@@ -68,24 +69,18 @@ class MacroAssembler {
 };
 ```
 
-Using such an interface provides more than just developer ergonomics.
-It also facilitates a much needed layer of abstraction between
-describing the computation and the architectural specifics. While no
-abstraction is perfectly leak-free (see some [quirks with ARM]() for
-example), overall, a `load`, `store` or `add` are perfectly reasonable
-operations to abstract.
+Using such an interface facilitates a much needed layer of abstraction
+between describing the computation and the architectural specifics.
+While no abstraction is perfectly leak-free (see some [quirks with
+ARM](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/MacroAssembler.h#663)
+as an illustrative example) overall, CPU instructions like `load`,
+`store` and `add` are a perfectly reasonable interface to abstract.
 
-Second, using a macro-assembler makes the code more self-explanatory
-than raw assembly. We can design reusable compound routines like
-[emitStackFrame]() or [callVM]() that are built from primitives. These
-lower directly into the repetitive instruction sequences we would have
-had to write painstakingly one at a time.
-
-Last, and crucially, so perhaps not least, we only need to maintain
-the backends responsible for correctly lowering the program, _not the
-program itself_. Maintaining parallel interpreter implementations is
-quite difficult, as V8 learned while [balancing several
-implementations at once]().
+Using a macro assembler, we only need to maintain the backends
+responsible for correctly lowering the program, _not the program
+itself_. Maintaining parallel interpreter implementations is quite
+difficult, as V8 learned while [balancing several implementations at
+once](https://v8.dev/blog/csa).
 
 ## Generated Interpreter
 
@@ -94,9 +89,10 @@ directly. Returning to answer the question of why the interpreter is
 generated - one plain reason is that the MacroAssembler itself is only
 available at runtime. It is part of the same build artifact as the
 engine, so how would we use it before it is compiled? Such chicken egg
-dependencies can be solved with [bootstrapping]() in general. However,
-if this were the only reason, the process to provide the baseline
-interpreter AOT would be quite simple. We simply generate the
+dependencies can generally be solved with
+[bootstrapping](https://en.wikipedia.org/wiki/Bootstrapping_(compilers)).
+However, if this were the only reason, the process to provide the
+baseline interpreter AOT would be clear. We could simply generate the
 interpreter, dump it to a file, attach it as a build input and
 rebuild. That sounds too nice. And in fact it is.
 
@@ -106,14 +102,18 @@ structure showing code and patches" darkMode="invert" />
 Since the interpreter is generated relatively late in the startup
 lifecycle, the clever engineers at Mozilla noticed that they could
 bake in addresses of runtime objects directly into the interpreter
-code, such as [opcode handlers](), [profiling]() and [debugging]()
-infrastructure, and, most importantly, the addresses in the [dispatch
-table](). Baking in runtime addresses is great for performance. We
-save the pointer dereferences otherwise necessary to access fields of
-our runtime objects, and the branch predictor benefits from seeing
-stable target addresses rather than values loaded through indirection.
-This is the performance convenience I mentioned earlier; it is also
-the very reason for which bootstrapping the interpreter is difficult.
+code, such as [opcode
+handlers](https://searchfox.org/firefox-main/source/js/src/jit/BaselineCodeGen.cpp#2821),
+[profiling](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#1744)
+and debugging handlers, and, most importantly, the addresses in the
+[dispatch
+table](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#7243).
+Baking in runtime addresses is great for performance. We save the
+pointer dereferences otherwise necessary to access fields of our
+runtime objects, and the branch predictor benefits from seeing stable
+target addresses rather than values loaded through indirection. This
+is the performance convenience I mentioned earlier; it is also the
+very reason for which bootstrapping the interpreter is difficult.
 
 ## ASLR and the Scope of the Problem
 
@@ -248,15 +248,18 @@ infrastructure into the MacroAssembler, but we can introduce a lighter
 weight `isAOTCompile_` flag to emit conditional codegen.
 
 When the flag is set, rather than emitting a raw pointer to the
-[JSRuntime]() or [JSContext](), we load it from a guaranteed location
-instead. We can even pin this pointer in a register so it is always
-available, making the indirections slightly less costly. For baseline
-interpreter generation, we pass a `JSZone` pointer in the
-[BaselineFrame]() which facilitates the transition between host C++
-code and the JIT compiled baseline interpreter. Immediately in the
-prologue we load the zone pointer into a register<sup>1</sup>, then
-compute the runtime pointers through indirection on this
-register<sup>2</sup>.
+[JSRuntime](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/Runtime.h#304)
+or
+[JSContext](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/JSContext.h#211),
+we load it from a guaranteed location instead. We can even pin this
+pointer in a register so it is always available, making the
+indirections slightly less costly. For baseline interpreter
+generation, we pass a `JSZone` pointer in the
+[BaselineFrame](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineFrame.h#32)
+which facilitates the transition between host C++ code and the JIT
+compiled baseline interpreter. Immediately in the prologue we load the
+zone pointer into a register<sup>1</sup>, then compute the runtime
+pointers through indirection on this register<sup>2</sup>.
 
 ### The Extended Jump Table
 
@@ -376,7 +379,7 @@ abundant resource, we need to fall back to loading from the frame each time.
 Currently x64 is the only architecture the prototype works for.
 
 2. For IC stubs, as we will talk about in part 2, we put a `JSZone*`
-pointer into the `ICStub` data class. [Chase]() worked on this in
+pointer into the `ICStub` data class. [Chase](https://github.com/TotallyNotChase) worked on this in
 parallel, and we think we can consolidate to using the `JSZone*` from
 the BaselineFrame instead.
 
