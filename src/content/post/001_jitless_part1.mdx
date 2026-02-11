@@ -261,35 +261,32 @@ compiled baseline interpreter. Immediately in the prologue we load the
 zone pointer into a register<sup>1</sup>, then compute the runtime
 pointers through indirection on this register<sup>2</sup>.
 
-### The Extended Jump Table
-
-Some of the trickier runtime addresses were being leaked from the
-extended jump table. The dispatch table patches were working on a vast
-majority of tests, but once in a while stale jumps were appearing. It
-turns out, when `call(ImmPtr(target))` can't reach the target with a
-32-bit relative offset, the assembler sneakily creates a trampoline at
-the bottom of the interpreter blob. We had to patch these too,
-rewriting the `callWithABI(ImmPtr(fn))` with a patchable `movabs` into
-a register followed by `callWithABI(reg)`.
-
-```asm
-;; Extended jump table entry:
-movabs $0x7f1234567890, %r11
-jmp    *%r11
-```
-
-Debug instrumentation like `assumeUnreachable()` internally calls
-`callWithABI` too, creating hidden entries. We suppress these with `if
-(!isAOTCompile_)`.
-
 ### Crash at Dumptime
 
 With hundreds of patch sites, it is easy to miss one. As a safety net,
 we added a verification pass that records every `movabs` whose
-immediate looks like a pointer<sup>3</sup> and cross-checks it against
-the `RuntimePatch` list after codegen. Any unmatched pointer is a
-fatal error. Without this, a single forgotten address would produce a
-blob that works on the build machine but crashes on every other run.
+immediate looks like a pointer<sup>3</sup> and cross-reference it
+against the `RuntimePatch` list after codegen. If any runtime pointer
+does not have a corresponding patch, we can crash at dumptime rather
+than finding out the hard way while running the interpreter.
+
+### The Long Tail of Leaky Runtime Pointers
+
+The dump-time check mentioned above helped find some evasive runtime
+pointers. One of the more subtle cases originated in the extended jump
+table. While op-handler lookups through the patched dispatch table
+were working on a vast majority of tests, once in a while stale jumps
+were appearing. Why? It turns out, when `call(ImmPtr(target))` can't
+reach the target with a 32-bit relative offset, the assembler sneakily
+creates a trampoline at the bottom of the interpreter blob. We had to
+patch these too, rewriting the `callWithABI(ImmPtr(fn))` with a
+patchable `movabs` into a register followed by `callWithABI(reg)`.
+
+```asm
+;; Extended jump table entry rewritten through a register.
+movabs $0x7f1234567890, %r11
+jmp    *%r11
+```
 
 ## Emit an Opcode
 
@@ -353,16 +350,24 @@ handler illustrates threaded dispatch: we index into the dispatch
 table and perform a computed jump directly to the next opcode handler,
 avoiding a return to a central dispatch loop.
 
+## Evaluation
 
-## Remaining Issues
+
+
+## Reflection on the Approach
 
 The biggest glaring problem with this infrastructure is that it is not
 automatically derived. If the interpreter maintainer decides to change
 code generation, they also need to keep in mind registering patches
 for AOT mode. This imposes more cognitive load on a complex project
-which already demands plenty. We could improve the dump-time
-verification. Another idea is to introduce some static analysis tool
-to automate the detection of leaks. I am open to feedback!
+which already demands plenty. Another idea is to introduce some static
+analysis tool to automate the detection of leaks.
+
+On the other hand, our pointer patching technique bennefits from not
+modifying the meticulous crafted codegen. We keep the emission
+additional indirections to acheive position indpendence to a minimum.
+
+
 
 ## Conclusion
 
