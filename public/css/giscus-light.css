@@ -1,0 +1,177 @@
+/*! MIT License - Copyright (c) 2018 GitHub Inc.
+ * Custom light theme for giscus, matched to justinmeimar.com
+ */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("https://justinmeimar.com/fonts/Newsreader-latin.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("https://justinmeimar.com/fonts/JetBrainsMono-latin.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+main {
+  --color-prettylights-syntax-comment: #6e7781;
+  --color-prettylights-syntax-constant: #0550ae;
+  --color-prettylights-syntax-entity: #8250df;
+  --color-prettylights-syntax-storage-modifier-import: #24292f;
+  --color-prettylights-syntax-entity-tag: #116329;
+  --color-prettylights-syntax-keyword: #cf222e;
+  --color-prettylights-syntax-string: #0a3069;
+  --color-prettylights-syntax-variable: #953800;
+  --color-prettylights-syntax-brackethighlighter-unmatched: #82071e;
+  --color-prettylights-syntax-invalid-illegal-text: #f6f8fa;
+  --color-prettylights-syntax-invalid-illegal-bg: #82071e;
+  --color-prettylights-syntax-carriage-return-text: #f6f8fa;
+  --color-prettylights-syntax-carriage-return-bg: #cf222e;
+  --color-prettylights-syntax-string-regexp: #116329;
+  --color-prettylights-syntax-markup-list: #3b2300;
+  --color-prettylights-syntax-markup-heading: #0550ae;
+  --color-prettylights-syntax-markup-italic: #24292f;
+  --color-prettylights-syntax-markup-bold: #24292f;
+  --color-prettylights-syntax-markup-deleted-text: #82071e;
+  --color-prettylights-syntax-markup-deleted-bg: #ffebe9;
+  --color-prettylights-syntax-markup-inserted-text: #116329;
+  --color-prettylights-syntax-markup-inserted-bg: #dafbe1;
+  --color-prettylights-syntax-markup-changed-text: #953800;
+  --color-prettylights-syntax-markup-changed-bg: #ffd8b5;
+  --color-prettylights-syntax-markup-ignored-text: #eaeef2;
+  --color-prettylights-syntax-markup-ignored-bg: #0550ae;
+  --color-prettylights-syntax-meta-diff-range: #8250df;
+  --color-prettylights-syntax-brackethighlighter-angle: #57606a;
+  --color-prettylights-syntax-sublimelinter-gutter-mark: #8c959f;
+  --color-prettylights-syntax-constant-other-reference-link: #0a3069;
+
+  /* Buttons */
+  --color-btn-text: #292524;
+  --color-btn-bg: #fafaf9;
+  --color-btn-border: #d6d3d1;
+  --color-btn-shadow: 0 1px 0 rgb(31 35 40 / 4%);
+  --color-btn-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 25%);
+  --color-btn-hover-bg: #f5f5f4;
+  --color-btn-hover-border: #d6d3d1;
+  --color-btn-active-bg: #f5f5f4;
+  --color-btn-active-border: #d6d3d1;
+  --color-btn-selected-bg: #f5f5f4;
+  --color-btn-primary-text: #fff;
+  --color-btn-primary-bg: #1f883d;
+  --color-btn-primary-border: rgb(31 35 40 / 15%);
+  --color-btn-primary-shadow: 0 1px 0 rgb(31 35 40 / 10%);
+  --color-btn-primary-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
+  --color-btn-primary-hover-bg: #1a7f37;
+  --color-btn-primary-hover-border: rgb(31 35 40 / 15%);
+  --color-btn-primary-selected-bg: hsl(137deg 66% 28% / 100%);
+  --color-btn-primary-selected-shadow: inset 0 1px 0 rgb(0 45 17 / 20%);
+  --color-btn-primary-disabled-text: rgb(255 255 255 / 80%);
+  --color-btn-primary-disabled-bg: #94d3a2;
+  --color-btn-primary-disabled-border: rgb(31 35 40 / 15%);
+  --color-action-list-item-default-hover-bg: rgb(208 215 222 / 32%);
+  --color-segmented-control-bg: #f5f5f4;
+  --color-segmented-control-button-bg: #fff;
+  --color-segmented-control-button-selected-border: #a8a29e;
+
+  /* Foreground */
+  --color-fg-default: #292524;
+  --color-fg-muted: #78716c;
+  --color-fg-subtle: #a8a29e;
+
+  /* Canvas - matched to site bg */
+  --color-canvas-default: #f5f5f4;
+  --color-canvas-overlay: #fafaf9;
+  --color-canvas-inset: #f5f5f4;
+  --color-canvas-subtle: #fafaf9;
+
+  /* Borders */
+  --color-border-default: #d6d3d1;
+  --color-border-muted: #e7e5e4;
+  --color-neutral-muted: rgb(175 184 193 / 20%);
+
+  /* Accent - teal to match link-color */
+  --color-accent-fg: #14b8a6;
+  --color-accent-emphasis: #14b8a6;
+  --color-accent-muted: rgb(20 184 166 / 40%);
+  --color-accent-subtle: rgb(20 184 166 / 10%);
+
+  /* Status */
+  --color-success-fg: #1a7f37;
+  --color-attention-fg: #9a6700;
+  --color-attention-muted: rgb(212 167 44 / 40%);
+  --color-attention-subtle: #fff8c5;
+  --color-danger-fg: #d1242f;
+  --color-danger-muted: rgb(255 129 130 / 40%);
+  --color-danger-subtle: #ffebe9;
+  --color-primer-shadow-inset: inset 0 1px 0 rgb(208 215 222 / 20%);
+  --color-scale-gray-1: #fafaf9;
+  --color-scale-blue-1: rgb(20 184 166 / 15%);
+
+  --color-social-reaction-bg-hover: var(--color-scale-gray-1);
+  --color-social-reaction-bg-reacted-hover: var(--color-scale-blue-1);
+}
+
+main .pagination-loader-container {
+  background-image: url("https://github.com/images/modules/pulls/progressive-disclosure-line.svg");
+}
+
+main .gsc-loading-image {
+  background-image: url("https://github.githubassets.com/images/mona-loading-default.gif");
+}
+
+/* Font overrides */
+main, main * {
+  font-family: "Newsreader", Georgia, serif !important;
+}
+
+main .gsc-comment-author,
+main .gsc-reply-author,
+main .gsc-comment-author-avatar,
+main code,
+main .text-sm,
+main .gsc-social-reaction-summary-item,
+main .BtnGroup-item,
+main .btn,
+main [class*="tab"],
+main .tabnav-tab,
+main textarea {
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
+}
+
+/* Heading styles */
+main .gsc-comments > .gsc-header,
+main .gsc-reactions > .gsc-header {
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
+  letter-spacing: 0.025em;
+  color: #78716c;
+}
+
+/* Reaction count / comment count titles */
+main .gsc-reactions-count,
+main .gsc-comments-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+/* Textarea */
+main textarea {
+  font-size: 0.875rem !important;
+}
+
+/* Reaction buttons */
+main .gsc-social-reaction-summary-item {
+  font-size: 0.75rem;
+}
+
+/* Remove the default box shadow on the main container */
+main .gsc-main {
+  gap: 0.75rem;
+}
