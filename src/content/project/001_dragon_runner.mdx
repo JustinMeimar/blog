@@ -1,0 +1,28 @@
+
+---
+name: "Dragon Runner"
+description: "Unit tester and tournament runner for the University of Alberta's Compiler class."
+year: "2024"
+status: "maintained"
+tags: ["python", "compiler"]
+links:
+  github: "https://github.com/cmput415/Dragon-Runner"
+---
+
+Dragon Runner is a CLI tool used for compiler unit testing. It
+takes it's name from the imfamous [Dragon Book](https://en.wikipedia.org/wiki/Compilers:_Principles,_Techniques,_and_Tools). Notable features
+include LLVM `lit` [style answer in source](https://github.com/cmput415/Dragon-Runner?tab=readme-ov-file#test-file-format), a nice UI and clean
+diffs.
+
+The primary motivation for creating our own unit tester was to enrich
+[Competitive Testing](https://cmput415.github.io/415-docs/info/testing.html) by providing a tool coupled to the tournament
+rules. Dragon runner is perhaps more essential for graders than
+students, who use the tool to orchestrate a tournament of executables
+and test-cases fighting one another.
+
+Originally written in the pre-agent era, `dragon-runner` is owned by
+the CMPUT 415 organization. As such, I expect it to evolve rapidly as
+new students become maintainers. I have tried to remain one step ahead
+by vibe-coding a refector into Rust, in one-shot, with Opus 4.6.
+
+

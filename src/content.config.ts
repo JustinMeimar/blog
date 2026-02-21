@@ -29,12 +29,11 @@ const project = defineCollection({
   schema: ({ image }) =>
     z.object({
       name: z.string(),
-      tagline: z.string(),
       description: z.string(),
       coverImage: z.object({
         src: image(),
         alt: z.string(),
-      }),
+      }).optional(),
       images: z
         .array(
           z.object({

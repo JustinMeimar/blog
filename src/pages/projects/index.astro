@@ -40,7 +40,7 @@ const projects = await getAllProjects();
                 </div>
 
                 <p class="font-mono text-xs text-[var(--text-muted)] mb-4">
-                  {project.data.tagline}
+                  {project.data.description}
                 </p>
 
                 {/* Awards as simple text */}
@@ -52,19 +52,17 @@ const projects = await getAllProjects();
                 )}
 
                 {/* Cover image */}
-                <div class="relative overflow-hidden rounded border border-[var(--border)] mb-4 transition-all duration-500 group-hover:border-[var(--text-muted)]">
-                  <Image
-                    src={project.data.coverImage.src}
-                    alt={project.data.coverImage.alt}
-                    class="w-full h-auto transition-transform duration-700 group-hover:scale-[1.02]"
-                    widths={[400, 800]}
-                    sizes="(max-width: 768px) 100vw, 700px"
-                  />
-                </div>
-
-                <p class="font-serif text-sm text-[var(--text-muted)] leading-relaxed mb-3">
-                  {project.data.description}
-                </p>
+                {project.data.coverImage && (
+                  <div class="relative overflow-hidden rounded border border-[var(--border)] mb-4 transition-all duration-500 group-hover:border-[var(--text-muted)]">
+                    <Image
+                      src={project.data.coverImage.src}
+                      alt={project.data.coverImage.alt}
+                      class="w-full h-auto transition-transform duration-700 group-hover:scale-[1.02]"
+                      widths={[400, 800]}
+                      sizes="(max-width: 768px) 100vw, 700px"
+                    />
+                  </div>
+                )}
 
                 {/* Tags as inline text */}
                 <div class="flex flex-wrap gap-x-3 gap-y-1">
