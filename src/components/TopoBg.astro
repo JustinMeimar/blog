@@ -42,19 +42,19 @@
     resize();
     window.addEventListener("resize", resize);
 
-    document.addEventListener("mousemove", (e) => {
-      targetX = e.clientX / w;
-      targetY = e.clientY / h;
-    });
-
     function isDark() {
       return document.documentElement.getAttribute("data-theme") === "dark";
     }
 
-    // Only animate on the homepage — freeze everywhere else
+    // Only animate on the homepage — freeze everything on other pages
     const onContent = window.location.pathname !== "/";
     if (onContent) {
       frozenTime = Date.now() * 0.00015;
+    } else {
+      document.addEventListener("mousemove", (e) => {
+        targetX = e.clientX / w;
+        targetY = e.clientY / h;
+      });
     }
 
     function render(time: number) {
@@ -167,23 +167,29 @@
       }
     }
 
-    function loop() {
-      if (onContent) {
-        // Static render on content pages — just respond to cursor warp
+    if (onContent) {
+      // Static render — draw once, redraw only on resize
+      render(frozenTime);
+      function onResize() {
+        resize();
         render(frozenTime);
-        animId = requestAnimationFrame(loop);
-      } else {
+      }
+      window.addEventListener("resize", onResize);
+      document.addEventListener("astro:before-swap", () => {
+        window.removeEventListener("resize", onResize);
+      }, { once: true });
+    } else {
+      // Animated loop on homepage
+      function loop() {
         render(Date.now() * 0.00015);
         animId = requestAnimationFrame(loop);
       }
+      animId = requestAnimationFrame(loop);
+      document.addEventListener("astro:before-swap", () => {
+        cancelAnimationFrame(animId);
+        window.removeEventListener("resize", resize);
+      }, { once: true });
     }
-
-    animId = requestAnimationFrame(loop);
-
-    document.addEventListener("astro:before-swap", () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", resize);
-    }, { once: true });
   }
 
   initTopoBg();
