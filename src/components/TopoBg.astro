@@ -1,0 +1,191 @@
+<canvas id="topo-bg" aria-hidden="true"></canvas>
+
+<style>
+  #topo-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+
+<script>
+  function initTopoBg() {
+    const canvas = document.getElementById("topo-bg") as HTMLCanvasElement;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let w = 0;
+    let h = 0;
+    let mouseX = 0.5;
+    let mouseY = 0.5;
+    let targetX = 0.5;
+    let targetY = 0.5;
+    let animId: number;
+    let frozenTime = 0;
+    let running = true;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth;
+      h = window.innerHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    resize();
+    window.addEventListener("resize", resize);
+
+    document.addEventListener("mousemove", (e) => {
+      targetX = e.clientX / w;
+      targetY = e.clientY / h;
+    });
+
+    function isDark() {
+      return document.documentElement.getAttribute("data-theme") === "dark";
+    }
+
+    // Only animate on the homepage — freeze everywhere else
+    const onContent = window.location.pathname !== "/";
+    if (onContent) {
+      frozenTime = Date.now() * 0.00015;
+    }
+
+    function render(time: number) {
+      mouseX += (targetX - mouseX) * 0.03;
+      mouseY += (targetY - mouseY) * 0.03;
+
+      ctx!.clearRect(0, 0, w, h);
+
+      const dark = isDark();
+      const cols = 48;
+      const rows = Math.ceil((h / w) * cols);
+      const cellW = w / cols;
+      const cellH = h / rows;
+
+      // Electric blue: #2f8a98
+      const baseR = 47;
+      const baseG = 138;
+      const baseB = 152;
+
+      const alphaBase = dark ? 0.10 : 0.09;
+      const alphaStep = dark ? 0.018 : 0.014;
+      const lineW = dark ? 0.8 : 0.6;
+
+      for (let level = 0; level < 10; level++) {
+        const threshold = level * 0.1;
+
+        ctx!.beginPath();
+        ctx!.strokeStyle = `rgba(${baseR}, ${baseG}, ${baseB}, ${alphaBase + level * alphaStep})`;
+        ctx!.lineWidth = lineW;
+
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            const x = col * cellW;
+            const y = row * cellH;
+
+            const v00 = field(x, y, time);
+            const v10 = field(x + cellW, y, time);
+            const v01 = field(x, y + cellH, time);
+            const v11 = field(x + cellW, y + cellH, time);
+
+            marchCell(ctx!, x, y, cellW, cellH, v00, v10, v01, v11, threshold);
+          }
+        }
+
+        ctx!.stroke();
+      }
+    }
+
+    function field(px: number, py: number, t: number): number {
+      const nx = px / w;
+      const ny = py / h;
+
+      // Cursor warp — contour lines bend near cursor
+      const dx = nx - mouseX;
+      const dy = ny - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const pull = Math.exp(-dist * 4) * 0.35;
+
+      const s1 = Math.sin(nx * 8 + t * 1.2) * Math.cos(ny * 6 + t * 0.8);
+      const s2 = Math.sin(nx * 4.5 - t * 0.7 + ny * 3.2) * 0.6;
+      const s3 = Math.cos(nx * 12 + ny * 10 + t * 1.5) * 0.2;
+      const s4 = Math.sin((nx + ny) * 5 + t * 0.4) * 0.3;
+
+      return (s1 + s2 + s3 + s4) * 0.4 + 0.5 + pull;
+    }
+
+    function marchCell(
+      c: CanvasRenderingContext2D,
+      x: number, y: number,
+      cw: number, ch: number,
+      v00: number, v10: number, v01: number, v11: number,
+      thr: number
+    ) {
+      const idx =
+        (v00 > thr ? 8 : 0) |
+        (v10 > thr ? 4 : 0) |
+        (v11 > thr ? 2 : 0) |
+        (v01 > thr ? 1 : 0);
+
+      if (idx === 0 || idx === 15) return;
+
+      const lerp = (a: number, b: number, va: number, vb: number) => {
+        const d = vb - va;
+        return d === 0 ? a : a + ((thr - va) / d) * (b - a);
+      };
+
+      const top = lerp(x, x + cw, v00, v10);
+      const bottom = lerp(x, x + cw, v01, v11);
+      const left = lerp(y, y + ch, v00, v01);
+      const right = lerp(y, y + ch, v10, v11);
+
+      const line = (x1: number, y1: number, x2: number, y2: number) => {
+        c.moveTo(x1, y1);
+        c.lineTo(x2, y2);
+      };
+
+      switch (idx) {
+        case 1: case 14: line(x, left, bottom, y + ch); break;
+        case 2: case 13: line(bottom, y + ch, x + cw, right); break;
+        case 3: case 12: line(x, left, x + cw, right); break;
+        case 4: case 11: line(top, y, x + cw, right); break;
+        case 5:
+          line(x, left, top, y);
+          line(bottom, y + ch, x + cw, right); break;
+        case 6: case 9: line(top, y, bottom, y + ch); break;
+        case 7: case 8: line(x, left, top, y); break;
+        case 10:
+          line(x, left, bottom, y + ch);
+          line(top, y, x + cw, right); break;
+      }
+    }
+
+    function loop() {
+      if (onContent) {
+        // Static render on content pages — just respond to cursor warp
+        render(frozenTime);
+        animId = requestAnimationFrame(loop);
+      } else {
+        render(Date.now() * 0.00015);
+        animId = requestAnimationFrame(loop);
+      }
+    }
+
+    animId = requestAnimationFrame(loop);
+
+    document.addEventListener("astro:before-swap", () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    }, { once: true });
+  }
+
+  initTopoBg();
+  document.addEventListener("astro:after-swap", initTopoBg);
+</script>

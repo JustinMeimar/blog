@@ -5,19 +5,17 @@ description: "How YouTube makes parsing more painful than usual."
 tags: ["web"]
 ---
 
-I learned today that sites like YouTube go to great lengths to avoid
-reliable scraping. Dynamically injected content makes it hard enough,
-since simplying `curl`-ing the page gives a blank template. I needed
-to use `playwright` to spin up the browser in a headless state and
-actually navigate to the site.
+I learned today that sites like YouTube go to great lengths to [avoid
+reliable
+scraping](https://nor.sanavongsay.com/blog/exploring-the-purpose-of-obfuscated-css-class-names-in-modern-web-design).
+Dynamically injected content already makes scraping hard enough, I've
+encountered a bunch of timing issues initiating my scraping logic
+before the content is hydrated.
 
 But even then, YouTube _rotates randomly generated class suffixes_ of
-the useful divs on their site! This means even once you find the class
-name to identify a div of interest, it might not exist the next day.
-This makes it a nightmare for bots - which is the intended usecase.
-But it also makes my hobby extension very difficult!
+the useful divs on their site! So even if you find the class name for
+a div of intererst, it might not exist the next time you load the
+page. This makes it a nightmare for bots, which I understand is the
+intended usecase, but it also makes my hobby extension very difficult!
 
-How long until I just bolt a light weight VLM to transcribe the
-overall vibe of the page? Hopefully before YouTube starts applying 
-[adversarial filters](https://arxiv.org/abs/1712.09665) to block out bots on a pixel level.
 

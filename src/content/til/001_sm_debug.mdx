@@ -5,18 +5,18 @@ description: "JavaScript can Debug JavaScript at Runtime."
 tags: ["til", "sm"]
 ---
 
-Dynamic languages can expose runtime debugging APIs.
-For example, `pdb` lets a python program debug itself. For
-SpiderMonkey, an equivalent mechanism is provided for a JavaScript
-program to debug itself via the `Debugger` object.
+Dynamic languages can expose runtime debugging APIs. For example,
+`pdb` lets a python program debug itself. For SpiderMonkey, an
+equivalent mechanism is provided for a JavaScript program to debug
+itself via the `Debugger` object.
 
-This example shows the creation of a Debugger at runtime. We
-bind `this`, the global JS object, as the debugee, the "thing being
-debugged," while the debugger object itself lives in a separate compartment.
-This detail is essential, since it imposes the debugger be created in a
-memory and garbage collection space logically separated from other compartments.
-Otherwise, we could trigger an infinite recursion of the debugger debugging
-itself.
+This example shows the creation of a Debugger at runtime. We bind
+`this`, the global JS object, as the debugee, the "thing being
+debugged," while the debugger object itself lives in a separate
+compartment. This detail is essential, since it imposes the debugger
+be created in a memory and garbage collection space logically
+separated from other compartments. Otherwise, we could trigger an
+infinite recursion of the debugger debugging itself.
 
 ```js
 // Debugger must live in separate global to avoid observing itself.
@@ -48,7 +48,14 @@ factorial(5);
 ```
 Once we are in a debug hook, we can access the frame of the function
 which was trapped and inspect it as if it were regular data. We can
-walk the stack frame, observe the functions and inspect locals. A 
+walk the stack frame, observe the functions and inspect locals. A
 debugging API such as this is super useful for writing profilers and
-other tooling which requires a program to characterize it's own behaviour.
+other tooling which requires a program to characterize it's own
+behaviour.
+
+Unlike debuggers such as `gdb`, which debug a program by spawning a
+child process and handling software traps, the runtime debugginer
+interface exists in the exact same process as the main program
+execution. Debugging instrumentation is toggled on and off by
+[patching the JIT code](https://searchfox.org/firefox-main/rev/b824aa1f1416b2e3675f7561cb58f5568f4f156a/js/src/jit/BaselineCodeGen.cpp#5099).
 
