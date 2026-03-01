@@ -7,44 +7,17 @@ tags: ["cpp", "jit", "spidermonkey"]
 
 import BlogImage from '../../components/BlogImage.astro';
 
-export const links = { threaded_code:
-"https://en.wikipedia.org/wiki/Threaded_code", branch_weight:
-"https://llvm.org/docs/BranchWeightMetadata.html", code_layout:
-"https://sillycross.github.io/2023/05/12/2023-05-12/",
-baseline_interp:
-"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.h#582",
-masm:
-"https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#",
-bootstrapping:
-"https://en.wikipedia.org/wiki/Bootstrapping_(compilers)", v8_jitless:
-"https://v8.dev/blog/jitless", opcode_handlers:
-"https://searchfox.org/firefox-main/source/js/src/jit/BaselineCodeGen.cpp#2821",
-profiling:
-"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#1744",
-dispatch_table:
-"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#7243",
-aslr:
-"https://en.wikipedia.org/wiki/Address_space_layout_randomization",
-got: "https://en.wikipedia.org/wiki/Global_Offset_Table", jsruntime:
-"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/Runtime.h#304",
-jscontext:
-"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/JSContext.h#211",
-baseline_frame:
-"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineFrame.h#32",
-chase: "https://github.com/TotallyNotChase", };
-
-
 ## Why a Generated Interpreter?
 
 You may be aware that high performance interpreters are commonly
 written in assembly. Some advantages of doing so include attaining
-[fine grained control flow]({links.threaded_code}), [predictable
-branching patterns]({links.branch_weight}), [manual code
-layout]({links.code_layout}), and escaping the C calling convention.
-In this respect, SpiderMonkey's [Baseline
-Interpreter]({links.baseline_interp}) is no exception. What may
-surprise you to hear, however, is that the baseline interpreter is
-_generated at runtime_.
+[fine grained control flow](links.threaded_code), [predictable
+branching patterns](links.branch_weight), [manual code
+layout](links.code_layout), and escaping the C calling convention. In
+this respect, SpiderMonkey's [Baseline
+Interpreter](links.baseline_interp) is no exception. What may surprise
+you to hear, however, is that the baseline interpreter is _generated
+at runtime_.
 
 First of all, what does it mean for the interpreter to be _generated_?
 Unlike static code which may be compiled into an object file, ready to
@@ -53,7 +26,7 @@ is the cardinal characteristic of JIT code, so to say the baseline
 interpreter is _generated_ simply means to say it is JIT code, like
 any other in the engine. A linear buffer is allocated on the heap, has
 instructions written into it, is memory-mapped as executable, then
-jumped into through the [EnterJIT Trampoline]().
+jumped into through the [EnterJIT Trampoline](links.enter_jit).
 
 The more important question to ask is, _why would an interpreter be
 generated?_ JIT compilers produce runtime generated code out of
@@ -67,8 +40,8 @@ slight performance benefits, and what the challenges are for providing
 it AOT.
 
 This work is part of an ongoing project to develop a Jitless mode for
-Firefox (see [V8's blog]({links.v8_jitless}) for a good introduction
-to the concept.) In this post, we introduce the bootstrapping
+Firefox (see [V8's blog](links.v8_jitless) for a good introduction to
+the concept.) In this post, we introduce the bootstrapping
 infrastructure for the AOT baseline interpreter, which involves
 dumping runtime generated code, rebuilding and patching at load time.
 In later posts, we may talk about extending this infrastructure to
@@ -79,14 +52,14 @@ trampolines, AOT Inline Cache stubs and other areas of the engine.
 Actually writing an interpreter in pure assembly is a grueling task.
 Instead, developers use high level languages to emit assembly for
 them. In SpiderMonkey, this interface is called the
-[MacroAssembler]({links.masm}). The baseline interpreter is specified
+[MacroAssembler](links.masm). The baseline interpreter is specified
 entirely in the MASM dsl, written once and automatically lowered for
 each supported platform. But the MacroAssembler itself is _only
 available at runtime_, suggesting we have a chicken and egg problem:
 The MASM is part of the same build artifact as the engine, so how
 would we invoke the MASM to generate the baseline interpreter before
 the MASM itself is available? Such dependencies in code generation can
-generally be solved with [bootstrapping]({links.bootstrapping}).
+generally be solved with [bootstrapping](links.bootstrapping).
 However, if this were the only reason preventing us from providing the
 baseline interpreter AOT, our solution would be clear. We could simply
 generate the interpreter, dump it to a file, attach it as a build
@@ -98,12 +71,12 @@ bootstrap build pipeline" darkMode="invert" />
 Since the interpreter is generated relatively late in the startup
 lifecycle, the clever engineers at Mozilla noticed that they could
 bake in addresses of runtime objects directly into the interpreter
-code, such as [opcode handlers]({links.opcode_handlers}),
-[profiling]({links.profiling}) and debugging handlers, and, most
+code, such as [opcode handlers](links.opcode_handlers),
+[profiling](links.profiling) and debugging handlers, and, most
 importantly, the addresses in the [dispatch
-table]({links.dispatch_table}). Baking in runtime addresses is great
-for performance. We save the pointer dereferences otherwise necessary
-to access fields of our runtime objects, and the branch predictor
+table](links.dispatch_table). Baking in runtime addresses is great for
+performance. We save the pointer dereferences otherwise necessary to
+access fields of our runtime objects, and the branch predictor
 benefits from seeing stable target addresses rather than values loaded
 through indirection. This is also the very reason for which
 bootstrapping the interpreter is difficult.
@@ -111,13 +84,13 @@ bootstrapping the interpreter is difficult.
 ## ASLR and the Scope of the Problem
 
 Runtime pointers embedded into the baseline codegen pose a problem.
-[ASLR]({links.aslr}) guarantees that our virtual address space is
+[ASLR](links.aslr) guarantees that our virtual address space is
 randomized each time our program is loaded. Our pre-compiled
 interpreter blob would dereference garbage pointers on any subsequent
 run if we bootstrapped directly. We need something akin to
 _relocations_ in dynamic libraries, where the dynamic linker resolves
-symbol addresses into the [GOT]({links.got}) at load time. However,
-code that references the GOT pays for an extra level of indirection on
+symbol addresses into the [GOT](links.got) at load time. However, code
+that references the GOT pays for an extra level of indirection on
 every access. Many of our runtime pointers are too performance
 sensitive for that; we need their values patched directly into the
 instruction stream. For AOT baseline, therefore, we need to track and
@@ -216,8 +189,8 @@ emitted in baseline codegen was tedious. Some are obvious and occur in
 top-level routines, which we could find by grepping. Others were
 obfuscated through layers of abstraction, emitted in deep nested calls
 into the MacroAssembler within routines shared amongst other codegen
-for which we _don't_ want to emit AOT relocations. For that reason,
-we implemented indirection for some runtime pointers, since cluttering
+for which we _don't_ want to emit AOT relocations. For that reason, we
+implemented indirection for some runtime pointers, since cluttering
 our patch accumulator into the scope of the masm was not viable.
 
 ### Indirection Through a Pinned Register
@@ -226,15 +199,15 @@ For these deeply nested runtime pointers we needed a second strategy.
 Here we are more content with using indirection. We introduce a
 lighter weight `isAOTCompile_` flag to emit conditional codegen from
 within the MASM. When the flag is set, rather than emitting a raw
-pointer to the [JSRuntime]({links.jsruntime}) or
-[JSContext]({links.jscontext}), we load it from a guaranteed location
+pointer to the [JSRuntime](links.jsruntime) or
+[JSContext](links.jscontext), we load it from a guaranteed location
 instead. We can even pin this pointer in a register so it is always
 available, making the indirections slightly less costly. For baseline
 interpreter generation, we pass a `JSZone` pointer in the
-[BaselineFrame]({links.baseline_frame}) which facilitates the
-transition between host C++ code and the JIT compiled baseline
-interpreter. Immediately in the prologue we load the zone pointer into
-a register<sup>1</sup>, then compute the runtime pointers through
+[BaselineFrame](links.baseline_frame) which facilitates the transition
+between host C++ code and the JIT compiled baseline interpreter.
+Immediately in the prologue we load the zone pointer into a
+register<sup>1</sup>, then compute the runtime pointers through
 indirection on this register<sup>2</sup>.
 
 ### Crash at Dumptime
@@ -332,7 +305,7 @@ abundant resource, we need to fall back to loading from the frame each time.
 Currently x64 is the only architecture the prototype works for.
 
 2. For IC stubs, as we will talk about in part 2, we put a `JSZone*`
-pointer into the `ICStub` data class. [Chase]({links.chase}) worked on this in
+pointer into the `ICStub` data class. [Chase](links.chase) worked on this in
 parallel, and we think we can consolidate to using the `JSZone*` from
 the BaselineFrame instead.
 
