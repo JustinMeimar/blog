@@ -7,35 +7,58 @@ tags: ["cpp", "jit", "spidermonkey"]
 
 import BlogImage from '../../components/BlogImage.astro';
 
+export const links = { threaded_code:
+"https://en.wikipedia.org/wiki/Threaded_code", branch_weight:
+"https://llvm.org/docs/BranchWeightMetadata.html", code_layout:
+"https://sillycross.github.io/2023/05/12/2023-05-12/",
+baseline_interp:
+"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.h#582",
+masm:
+"https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#",
+bootstrapping:
+"https://en.wikipedia.org/wiki/Bootstrapping_(compilers)", v8_jitless:
+"https://v8.dev/blog/jitless", opcode_handlers:
+"https://searchfox.org/firefox-main/source/js/src/jit/BaselineCodeGen.cpp#2821",
+profiling:
+"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#1744",
+dispatch_table:
+"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#7243",
+aslr:
+"https://en.wikipedia.org/wiki/Address_space_layout_randomization",
+got: "https://en.wikipedia.org/wiki/Global_Offset_Table", jsruntime:
+"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/Runtime.h#304",
+jscontext:
+"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/JSContext.h#211",
+baseline_frame:
+"https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineFrame.h#32",
+chase: "https://github.com/TotallyNotChase", };
+
 
 ## Why a Generated Interpreter?
 
 You may be aware that high performance interpreters are commonly
 written in assembly. Some advantages of doing so include attaining
-[fine grained control
-flow](https://en.wikipedia.org/wiki/Threaded_code), [predictable
-branching patterns](https://llvm.org/docs/BranchWeightMetadata.html),
-[manual code
-layout](https://sillycross.github.io/2023/05/12/2023-05-12/), and
-escaping the C calling convention. In this respect, SpiderMonkey's
-[Baseline
-Interpreter](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.h#582)
-is no exception. What may surprise you to hear, however, is that the
-baseline interpreter is _generated at runtime_.
+[fine grained control flow]({links.threaded_code}), [predictable
+branching patterns]({links.branch_weight}), [manual code
+layout]({links.code_layout}), and escaping the C calling convention.
+In this respect, SpiderMonkey's [Baseline
+Interpreter]({links.baseline_interp}) is no exception. What may
+surprise you to hear, however, is that the baseline interpreter is
+_generated at runtime_.
 
 First of all, what does it mean for the interpreter to be _generated_?
 Unlike static code which may be compiled into an object file, ready to
 be executed immediately, generated code is _produced at runtime_. This
 is the cardinal characteristic of JIT code, so to say the baseline
 interpreter is _generated_ simply means to say it is JIT code, like
-any other in the engine. It has allocated a buffer for itself on the
-heap, has instructions written into it, is memory-mapped as
-executable, then jumped into through the [EnterJIT Trampoline]().
+any other in the engine. A linear buffer is allocated on the heap, has
+instructions written into it, is memory-mapped as executable, then
+jumped into through the [EnterJIT Trampoline]().
 
 The more important question to ask is, _why would an interpreter be
 generated?_ JIT compilers produce runtime generated code out of
 necessity since the type information required to produce fast code is
-realized at runtime. An interpreter has deterministic codegen,
+realized at runtime. But an interpreter has deterministic codegen,
 regardless of the execution context, doesn't it? So why should it not
 be a regular compiled object available at link time? To understand,
 we'll take a dive into some SpiderMonkey internals. We will see how
@@ -43,105 +66,64 @@ runtime generation is a natural strategy to take, how it yields some
 slight performance benefits, and what the challenges are for providing
 it AOT.
 
-
 This work is part of an ongoing project to develop a Jitless mode for
-FireFox (see [V8's blog](https://v8.dev/blog/jitless) for a good
-introduction to the concept.) In this post, we introduce the
-bootstrapping infrastructure for the AOT baseline interpreter, which
-involves dumping runtime generated code, rebuilding and patching at
-load time. In later posts, we may talk about extending this
-infrastructure to trampolines, AOT Inline Cache stubs and other areas
-of the engine.
+Firefox (see [V8's blog]({links.v8_jitless}) for a good introduction
+to the concept.) In this post, we introduce the bootstrapping
+infrastructure for the AOT baseline interpreter, which involves
+dumping runtime generated code, rebuilding and patching at load time.
+In later posts, we may talk about extending this infrastructure to
+trampolines, AOT Inline Cache stubs and other areas of the engine.
 
-## Macro Assemblers
+## Bootstrapping JIT Code
 
 Actually writing an interpreter in pure assembly is a grueling task.
 Instead, developers use high level languages to emit assembly for
 them. In SpiderMonkey, this interface is called the
-[MacroAssembler](https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#).
-Analogous interfaces exist in other engines, such as
-[DynASM](https://luajit.org/dynasm.html) in LuaJIT and V8's
-[MacroAssembler](https://source.chromium.org/chromium/chromium/src/+/main:v8/src/codegen/macro-assembler.h).
-
-```c++
-// A simple MacroAssembler interface.
-class MacroAssembler {
-  public:
-    void load(Register dst, Register src);
-    void store(Register dst, Register src);
-    void add(Register src1, Register src2, Register dst);
-    void jmp(Register dst);
-};
-```
-
-Such interfaces facilitate a much needed layer of abstraction between
-_describing the computation_ and the _architectural specifics._ The
-MASM abstraction takes us pretty far. For all _self contained_ JIT
-code, that is code which calls other JIT code, the MASM enables us to
-describe the implementation once, then have semantically equivalent
-versions automatically lowered for each supported platform. But of
-course, no abstraction is perfectly leak free. Code which operates on
-the boundary between host code and JIT code, typically trampolines,
-require [platform specific implementations]() due to their semantics
-being coupled to the platform calling convention.
-
-The important detail is that the Baseline Interpreter is specified
-exactly using the abstract language of our MASM. Maintaining parallel
-interpreter implementations is quite difficult, as V8 learned while
-[balancing several implementations at once](https://v8.dev/blog/csa).
-
-## Generated Interpreter
-
-Now we understand why interpreters are not written in assembly
-directly. We can answer the question of why the interpreter is
-generated. One plain reason is that the MacroAssembler itself is _only
-available at runtime_. We have a chicken and egg problem here. The
-MASM is part of the same build artifact as the engine, so how would we
-invoke the MASM to generate the baseline interpreter before the MASM
-itself is available? Such dependencies in code generation can
-generally be solved with
-[bootstrapping](https://en.wikipedia.org/wiki/Bootstrapping_(compilers)).
+[MacroAssembler]({links.masm}). The baseline interpreter is specified
+entirely in the MASM dsl, written once and automatically lowered for
+each supported platform. But the MacroAssembler itself is _only
+available at runtime_, suggesting we have a chicken and egg problem:
+The MASM is part of the same build artifact as the engine, so how
+would we invoke the MASM to generate the baseline interpreter before
+the MASM itself is available? Such dependencies in code generation can
+generally be solved with [bootstrapping]({links.bootstrapping}).
 However, if this were the only reason preventing us from providing the
 baseline interpreter AOT, our solution would be clear. We could simply
 generate the interpreter, dump it to a file, attach it as a build
 input and rebuild. That sounds too nice. And in fact it is.
 
-<BlogImage src="/images/jitless_part1/bootstrap.svg" alt="AOT blob
-structure showing code and patches" darkMode="invert" />
+<BlogImage src="/images/jitless_part1/bootstrap.svg" alt="Two-pass
+bootstrap build pipeline" darkMode="invert" />
 
 Since the interpreter is generated relatively late in the startup
 lifecycle, the clever engineers at Mozilla noticed that they could
 bake in addresses of runtime objects directly into the interpreter
-code, such as [opcode
-handlers](https://searchfox.org/firefox-main/source/js/src/jit/BaselineCodeGen.cpp#2821),
-[profiling](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#1744)
-and debugging handlers, and, most importantly, the addresses in the
-[dispatch
-table](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.cpp#7243).
-Baking in runtime addresses is great for performance. We save the
-pointer dereferences otherwise necessary to access fields of our
-runtime objects, and the branch predictor benefits from seeing stable
-target addresses rather than values loaded through indirection. This
-is the performance convenience I mentioned earlier; it is also the
-very reason for which bootstrapping the interpreter is difficult.
+code, such as [opcode handlers]({links.opcode_handlers}),
+[profiling]({links.profiling}) and debugging handlers, and, most
+importantly, the addresses in the [dispatch
+table]({links.dispatch_table}). Baking in runtime addresses is great
+for performance. We save the pointer dereferences otherwise necessary
+to access fields of our runtime objects, and the branch predictor
+benefits from seeing stable target addresses rather than values loaded
+through indirection. This is also the very reason for which
+bootstrapping the interpreter is difficult.
 
 ## ASLR and the Scope of the Problem
 
-Runtime pointers embedded into the baseline codegen poses a problem.
-[ASLR](https://en.wikipedia.org/wiki/Address_space_layout_randomization)
-guarantees that our virtual address space is randomized each time our
-program is loaded. Our pre-compiled interpreter blob would dereference
-garbage pointers on any subsequent run if we bootstrapped directly. We
-need something akin to _relocations_ in dynamic libraries, where the
-dynamic linker resolves symbol addresses into the
-[GOT](https://en.wikipedia.org/wiki/Global_Offset_Table) at load time.
-However, code that references the GOT pays for an extra level of
-indirection on every access. Many of our runtime pointers are too
-performance sensitive for that; we need their values patched directly
-into the instruction stream. For AOT baseline, therefore, we need to
-track and patch _every single runtime pointer_.
+Runtime pointers embedded into the baseline codegen pose a problem.
+[ASLR]({links.aslr}) guarantees that our virtual address space is
+randomized each time our program is loaded. Our pre-compiled
+interpreter blob would dereference garbage pointers on any subsequent
+run if we bootstrapped directly. We need something akin to
+_relocations_ in dynamic libraries, where the dynamic linker resolves
+symbol addresses into the [GOT]({links.got}) at load time. However,
+code that references the GOT pays for an extra level of indirection on
+every access. Many of our runtime pointers are too performance
+sensitive for that; we need their values patched directly into the
+instruction stream. For AOT baseline, therefore, we need to track and
+patch _every single runtime pointer_.
 
-In the baseline AOT blob, the total patch count lands around 300-400
+In the baseline AOT blob, the total patch count lands at 350 patch
 entries, falling into the following broad categories:
 
 - Dispatch table (256 entries): one per bytecode opcode. Each points
@@ -158,14 +140,66 @@ entries, falling into the following broad categories:
 
 ### Pointer Patching
 
-We setup the interpreter codegen to watch for every time an absolute
-address is emitted. When encountered, a `RuntimePatch` is created, a
-small struct which records the current offset, the kind of pointer to
-patch, and an additional payload if necessary. An array of
-`RuntimePatch` structs are serialized to the bottom of our AOT blob
-along with some metadata (mostly static offsets) required to
+When a runtime pointer is emitted via a `masm` method, it must be
+tracked. A natural choke point is through `masm.movePtr`, along with
+its friends, `masm.loadPtr` and `masm.branchPtr`. For now, we
+constructed some wrappers around these interfaces to dispatch AOT
+emission and tracking.
+
+```c++
+void MacroAssembler::moveAOTReloc(AOTRelocKind kind, Register dest) {
+  if (!isAOT()) {
+    // Fallback to the existing codegen when AOT generation is off.
+    movePtr(ResolveAOTRelocCompileTime(kind, runtime()), dest);
+    return;
+  }
+  switch (aot().strategy()) {
+    case AOTStrategy::PatchPointers:
+      aot().emitPatchableMov(RuntimePatch(kind, 0), dest);
+      return;
+    case AOTStrategy::RegisterIndirect:
+      // Avoid patching by loading from a reliable pointer to the
+      // Zone, from where all pointers can be attained via extra
+      // arithmetic and loads.
+      emitAOTRelocViaZone(kind, dest);
+      return;
+  }
+}
+```
+
+When `moveAOTReloc` is called with the patching strategy, a
+`RuntimePatch` is created, a struct which records the current offset,
+the kind of pointer to patch, and an additional payload if necessary.
+An array of `RuntimePatch` structs are serialized to the bottom of our
+AOT blob along with some metadata (mostly static offsets) required to
 reconstruct the `BaselineInterpreter` class on the load side.
 
+```c++
+class RuntimePatch {
+  public:
+    // Each patch has a tag, instructing what patch to apply, and a
+    // targetOffset, representing where to apply.
+    ExternalRefKind kind;
+    uint32_t targetOffset;
+    
+    // Some patches require payloads.
+    union {
+      uint32_t handlerOffset;
+      VMFunctionId vmId;
+      DebugTrapHandlerKind dbgKind;
+      AOTCppFunctionId cppFnId;
+    };
+
+    explicit RuntimePatch(ExternalRefKind kind_, uint32_t targetOffset_) :
+      kind(kind_), targetOffset(targetOffset_) {}
+    
+    void apply(const PatchContext& pc) const;
+  private:
+    RuntimePatch() = default;
+    uintptr_t getValueToPatch(const PatchContext& pc) const;
+};
+
+```
 
 <BlogImage src="/images/jitless_part1/aot_blob.svg" alt="AOT blob
 structure showing code and patches" darkMode="invert" />
@@ -176,83 +210,15 @@ bootstrap. In a second build, we disassemble the code portion of the
 blob into a `.s`, which can be registered as a build input. At load
 time, the metadata portion of the blob is deserialized, along with the
 patches, which can be applied in the new heap and runtime context.
-Below is a slightly simplified interface for emitting patches.
-
-```c++
-/// A simplified RuntimePatch structure. We track a variant for
-/// every type of runtime pointer we encounter. The PatchContext
-/// is provided at load-time to attain the correct values for the
-/// runtime pointers.
-class RuntimePatch {
-  public:
-    enum class Kind : uint16_t {
-      JitRuntime,
-      DispatchTable,
-      VMWrapper,
-      JitActivation,
-      RealmPtr,
-      ProfilerEnabled,
-      DebugTrapHandler
-    };
-
-    Kind kind;
-    uint32_t targetOffset;
-    union {
-      uint32_t handlerOffset;
-      VMFunctionId vmId;
-      DebugTrapHandlerKind dbgKind;
-    };
-    explicit RuntimePatch(Kind kind_, uint32_t targetOffset_) :
-      kind(kind_), targetOffset(targetOffset_) {}
-
-    void apply(const PatchContext& pc) const;
-  private:
-    RuntimePatch() = default;
-    uintptr_t getValueToPatch(const PatchContext& pc) const;
-};
-```
 
 Finding the exhaustive locations where raw runtime pointers were
 emitted in baseline codegen was tedious. Some are obvious and occur in
-the top level logic, which we could find by grepping. Others were
-obfuscated through layers of abstraction. Particularly tricky are
-those emitted in routines shared by other codegen machinery. We can't
-automatically apply a patch in these paths since they are shared. As a
-result, lots of the patch logic used the following pattern, using a
-macro and internal condition to emit the patch selectively.
-
-```c++
-#ifdef ENABLE_AOT_BASELINE
-    if (isAOTCompile_) {
-        emitPatchableMovImm(RuntimePatch::Kind::WellKnownSymbols, scratch2);
-    } else
-#endif
-    {
-      // The JIT generated case.
-      masm.movePtr(ImmPtr(&runtime->wellKnownSymbols()), scratch2);
-    }
-```
-
-Where the `emitPatchableMovImm` creates the `RuntimePatch` and
-registers it:
-
-```c++
-void emitPatchableMovImm(RuntimePatch::Kind kind, Register dest) {
-    CodeOffset off = masm.movWithPatch(ImmPtr((void*)AOT_PATCH_SENTINEL), dest);
-    uint32_t immOff = off.offset() - sizeof(void*);
-    aotAccumulator_.registerPatch(RuntimePatch(kind, immOff));
-}
-```
-
-There are some caveats to this approach worth mentioning. Codegen like
-the case above occur _within the baseline codegen class_. These were
-the most convenient category of runtime pointers to patch, since they
-were commonly emitted in top-level routines. However, we encountered
-many runtime pointers emitted in deep nested calls the MacroAssembler,
-typically within routines shared amongst other codegen for which we
-_don't_ want to emit AOT relocations. For that reason, we implemented
-indirection for some runtime pointers, since cluttering our patch
-accumulator into the scope of the masm was not viable.
+top-level routines, which we could find by grepping. Others were
+obfuscated through layers of abstraction, emitted in deep nested calls
+into the MacroAssembler within routines shared amongst other codegen
+for which we _don't_ want to emit AOT relocations. For that reason,
+we implemented indirection for some runtime pointers, since cluttering
+our patch accumulator into the scope of the masm was not viable.
 
 ### Indirection Through a Pinned Register
 
@@ -260,25 +226,22 @@ For these deeply nested runtime pointers we needed a second strategy.
 Here we are more content with using indirection. We introduce a
 lighter weight `isAOTCompile_` flag to emit conditional codegen from
 within the MASM. When the flag is set, rather than emitting a raw
-pointer to the
-[JSRuntime](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/Runtime.h#304)
-or
-[JSContext](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/JSContext.h#211),
-we load it from a guaranteed location instead. We can even pin this
-pointer in a register so it is always available, making the
-indirections slightly less costly. For baseline interpreter
-generation, we pass a `JSZone` pointer in the
-[BaselineFrame](https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineFrame.h#32)
-which facilitates the transition between host C++ code and the JIT
-compiled baseline interpreter. Immediately in the prologue we load the
-zone pointer into a register<sup>1</sup>, then compute the runtime
-pointers through indirection on this register<sup>2</sup>.
+pointer to the [JSRuntime]({links.jsruntime}) or
+[JSContext]({links.jscontext}), we load it from a guaranteed location
+instead. We can even pin this pointer in a register so it is always
+available, making the indirections slightly less costly. For baseline
+interpreter generation, we pass a `JSZone` pointer in the
+[BaselineFrame]({links.baseline_frame}) which facilitates the
+transition between host C++ code and the JIT compiled baseline
+interpreter. Immediately in the prologue we load the zone pointer into
+a register<sup>1</sup>, then compute the runtime pointers through
+indirection on this register<sup>2</sup>.
 
 ### Crash at Dumptime
 
 With hundreds of patch sites, it is easy to miss one. As a safety net,
 we added a verification pass that records every `movabs` whose
-immediate looks like a pointer<sup>3</sup> and cross-reference it
+immediate looks like a pointer<sup>3</sup> and cross-references it
 against the `RuntimePatch` list after codegen. If any runtime pointer
 does not have a corresponding patch, we can crash at dumptime rather
 than finding out the hard way while running the interpreter.
@@ -314,15 +277,10 @@ bool BaselineInterpreterCodeGen::emit_Symbol() {
   Register scratch1 = R0.scratchReg();
   Register scratch2 = R1.scratchReg();
   LoadUint8Operand(masm, scratch1);
+    
+  // Replaces previous `masm.movePtr`
+  masm.moveAOTReloc(AOTRelocKind::WellKnownSymbols, scratch2);
 
-#if defined(ENABLE_JS_AOT_ICS) || defined(ENABLE_AOT_BASELINE)
-  if (isAOTCompile_) {
-    emitPatchableMovImm(RuntimePatch::Kind::WellKnownSymbols, scratch2);
-  } else
-#endif
-  {
-    masm.movePtr(ImmPtr(&runtime->wellKnownSymbols()), scratch2);
-  }
   masm.loadPtr(BaseIndex(scratch2, scratch1, ScalePointer), scratch1);
   masm.tagValue(JSVAL_TYPE_SYMBOL, scratch1, R0);
   frame.push(R0);
@@ -330,39 +288,10 @@ bool BaselineInterpreterCodeGen::emit_Symbol() {
 }
 ```
 
-In the generated path, `movePtr` bakes the address of
-`wellKnownSymbols` directly into the instruction stream. In AOT mode,
-`emitPatchableMovImm` emits a sentinel instead, and registers a
-`RuntimePatch` to fix it up at load time. The resulting AOT assembly
-(comments mine):
-
-```asm
-movzx      ecx, byte ptr [r14 + 1]
-# sentinel value, to be patched at load time.
-mov        rbx, 0xdeadbeef
-mov        rcx, qword ptr [rbx + rcx*8]
-mov        r11, rcx
-shr        r11, 47
-cmp        r11, r11
-je         .valid_symbol
-int3
-
-.valid_symbol:
-mov        r11, 0xfffb800000000000
-or         rcx, r11
-push       rcx
-add        r14, 2
-movzx      ecx, byte ptr [r14]
-# perform the computed jump to the next opcode in $rcx.
-lea        rbx, [rip + dispatch_table]
-jmp        qword ptr [rbx + rcx*8]
-```
-
-The `0xdeadbeef` sentinel sits in the `mov rbx, 0xdeadbeef`
-instruction, waiting to be patched at load time. The tail of the
-handler illustrates threaded dispatch: we index into the dispatch
-table and perform a computed jump directly to the next opcode handler,
-avoiding a return to a central dispatch loop.
+The `moveAOTReloc` call delegates to the patching or indirection
+strategy as shown earlier. At compile time it resolves the pointer
+directly; in AOT mode it emits a sentinel and registers a
+`RuntimePatch` to fix it up at load time.
 
 ## Evaluation
 
@@ -403,7 +332,7 @@ abundant resource, we need to fall back to loading from the frame each time.
 Currently x64 is the only architecture the prototype works for.
 
 2. For IC stubs, as we will talk about in part 2, we put a `JSZone*`
-pointer into the `ICStub` data class. [Chase](https://github.com/TotallyNotChase) worked on this in
+pointer into the `ICStub` data class. [Chase]({links.chase}) worked on this in
 parallel, and we think we can consolidate to using the `JSZone*` from
 the BaselineFrame instead.
 
