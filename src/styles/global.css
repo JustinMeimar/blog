@@ -52,8 +52,8 @@
   /* Dark mode colors */
   --color-bg-dark: #0c0a09;
   --color-bg-paper-dark: #1c1917;
-  --color-text-dark: #d6d3d1;
-  --color-text-muted-dark: #a8a29e;
+  --color-text-dark: #e7e5e4;
+  --color-text-muted-dark: #d6d3d1;
   --color-text-faint-dark: #57534e;
   --color-border-dark: #292524;
   --color-accent-dark: #a8a29e;
@@ -236,6 +236,10 @@ body::before {
   font-size: 1rem;
   line-height: 1.75;
   color: var(--text);
+}
+
+[data-theme="dark"] .prose {
+  font-weight: 400;
 }
 
 @media (min-width: 768px) {
