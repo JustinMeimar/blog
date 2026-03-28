@@ -6,17 +6,16 @@ description: "Lazy as in evaluation, secrets as in don't leak 'em."
 tags: ["nix"]
 --- 
 
-I have recently been enamoured with the idea of a fully declarative
+I have recently been enamored with the idea of a fully declarative
 home server. I have a general fear of forgetting configuration
 details, made worse since each tool often has its own bespoke format.
 Sometimes even the configuration files themselves are tucked away in
 forgettable places, like `.env` files or certificates buried in
 `/etc`. That said, I'm willing to concede that these are probably just
-skill issues. In totality, it is the _ease of swapping hardware_ that
-is ultimately the most persuasive reason to seutp a declarative
-home-server.
+skill issues. Ultimately, it is the _ease of swapping hardware_ that
+is the most persuasive reason to seutp a declarative home-server.
 
-Nix has been a resounding cure for this strange fear of mine. I can
+Nix is the obvious cure for this strange fear of mine. I can
 specify my entire server in one language, from systemd services, to
 project dependencies and deployment scripts. I recently learned
 something cool about secrets and the Nix expression language's _lazy_

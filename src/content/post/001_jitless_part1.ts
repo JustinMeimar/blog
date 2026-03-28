@@ -2,7 +2,7 @@
 export const links = {
     enter_jit:        "https://searchfox.org/firefox-main/rev/02caa848c5c09d4d1cf3212608f3cf9d399a76e2/js/src/jit/arm64/Trampoline-arm64.cpp#29",
     threaded_code:    "https://en.wikipedia.org/wiki/Threaded_code",
-    branch_weight:    "https://llvm.org/docs/BranchWeightMetadata.html",
+    branch_prediction: "https://www.scss.tcd.ie/David.Gregg/papers/toplas05.pdf",
     code_layout:      "https://sillycross.github.io/2023/05/12/2023-05-12/",
     baseline_interp:  "https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineCodeGen.h#582",
     masm:             "https://searchfox.org/firefox-main/rev/133582f487ff8291ec10bd524db52db0b8ed363e/js/src/jit/MacroAssembler.h#",
@@ -17,5 +17,8 @@ export const links = {
     jscontext:        "https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/vm/JSContext.h#211",
     baseline_frame:   "https://searchfox.org/firefox-main/rev/52e25e8bf7d712501f99b8ba77718ea0edc42bd7/js/src/jit/BaselineFrame.h#32",
     chase:            "https://github.com/TotallyNotChase",
+    inline_caches:    "https://www.mgaudet.ca/technical/2018/6/5/an-inline-cache-isnt-just-a-cache",
+    v8_heap_snapshots: "https://v8.dev/blog/speeding-up-v8-heap-snapshots",
+    v8_embedded_builtins: "https://v8.dev/blog/embedded-builtins",
 };
 
