@@ -1,8 +1,11 @@
 #import "@preview/cetz:0.3.4"
 #import "lib/diagrams.typ": *
 
-#set page(width: auto, height: auto, margin: 1.5em, fill: none)
-#set text(font: default-theme.fonts.mono, size: 8pt)
+#show: figure-page.with(
+  number: 2,
+  title: [AOT Indirection Table],
+  description: [Relocation sites in the AOT code blob resolve pointers through indirect loads via a pinned register.],
+)
 
 #let table-entries = (
   (off: "[0x00]", field: "JSContext*"),
@@ -42,59 +45,49 @@
   (code-i: 12, tab-i: 1, wx: 3.2),
 )
 
-#let rh = default-theme.geometry.row-height
-#let reg-y = 0
-#let tab-header-y = -2.0
-#let tab-y = tab-header-y - rh
-#let blob-x = 8.5
-#let blob-w = 7.5
-#let blob-header-y = reg-y + 0.2
-#let blob-top = blob-header-y - rh
-#let reg-w = 4.5
-#let tab-w = 1.1 + 3.4
+#let tab-header = [AOTIndirectionTable #text(weight: "regular", size: default-theme.sizes.offset, [(`.data`)])]
+#let blob-header = [AOT Code Blob #text(weight: "regular", size: default-theme.sizes.offset, [(`.text`)])]
 
-#let tab-geo = mem-table-geo((0, tab-y), table-entries)
-#let blob-geo = code-blob-geo((blob-x, blob-top), blob-w, code-lines)
+#context {
+  let tw = auto-mem-table-widths(table-entries, header: tab-header)
+  let tab-w = tw.off-w + tw.field-w
+  let code-w = auto-code-blob-width(code-lines, header: blob-header)
+  let rw = auto-register-widths("r13", "&AOTIndirectionTable")
 
-#cetz.canvas({
-  import cetz.draw: *
+  let reg-y = 0
+  let tab-y = -2.0
+  let blob-x = tab-w + 4.0
+  let rh = default-theme.geometry.row-height
 
-  register-display((0, reg-y), "r13", "&AOTIndirectionTable", total-w: reg-w)
+  let tab-geo = mem-table-geo((0, tab-y), table-entries, header: tab-header, off-w: tw.off-w, field-w: tw.field-w)
+  let blob-geo = code-blob-geo((blob-x, reg-y + 0.2), code-w, code-lines, header: blob-header)
 
-  // Table header + table
-  rect((0, tab-header-y), (tab-w, tab-header-y - rh),
-    stroke: default-theme.strokes.weight, fill: default-theme.fills.dark)
-  content((tab-w / 2, tab-header-y - rh / 2),
-    text(weight: "bold", size: default-theme.sizes.label,
-      [AOTIndirectionTable #text(weight: "regular", size: 7pt, [(`.data`)])]))
+  cetz.canvas({
+    import cetz.draw: *
 
-  mem-table((0, tab-y), table-entries)
+    register-display((0, reg-y), "r13", "&AOTIndirectionTable", name-w: rw.name-w, total-w: rw.total-w)
 
-  connector(
-    (reg-w / 2, reg-y - rh),
-    (tab-w / 2, tab-header-y),
-    style: "dashed",
-  )
-
-  // Code blob header + blob
-  rect((blob-x, blob-header-y), (blob-x + blob-w, blob-header-y - rh),
-    stroke: default-theme.strokes.weight, fill: default-theme.fills.dark)
-  content((blob-x + blob-w / 2, blob-header-y - rh / 2),
-    text(weight: "bold", size: default-theme.sizes.label,
-      [AOT Code Blob #text(weight: "regular", size: 7pt, [(`.text`)])]))
-
-  code-blob((blob-x, blob-top), blob-w, code-lines)
-
-  for a in arrows {
-    let cy = (blob-geo.line-y)(a.code-i)
-    let ty = (tab-geo.row-y)(a.tab-i)
-    let wx = tab-geo.width + a.wx
+    mem-table((0, tab-y), table-entries, header: tab-header, off-w: tw.off-w, field-w: tw.field-w)
 
     connector(
-      (blob-x, cy),
-      (wx, cy),
-      (wx, ty),
-      (tab-geo.width, ty),
+      (rw.total-w / 2, reg-y - rh),
+      (tab-w / 2, tab-y),
+      style: "dashed",
     )
-  }
-})
+
+    code-blob((blob-x, reg-y + 0.2), code-w, code-lines, header: blob-header)
+
+    for a in arrows {
+      let cy = (blob-geo.line-y)(a.code-i)
+      let ty = (tab-geo.row-y)(a.tab-i)
+      let wx = tab-w + a.wx
+
+      connector(
+        (blob-x, cy),
+        (wx, cy),
+        (wx, ty),
+        (tab-w, ty),
+      )
+    }
+  })
+}
