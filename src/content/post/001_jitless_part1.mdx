@@ -33,7 +33,6 @@ exposes opportunities for offline optimizations. While runtime compilation
 is made stringently efficient, we have a surplus of both time and compute
 when JIT code is provided AOT. 
 
-
 To contextualize, V8 has integrated bootstrapping into its engine in
 the form of [heap-snapshotting](links.v8_heap_snapshots) and [embedded builtins](links.v8_embedded_builtins), since at
 least 2018. Heap snapshotting captures the initialized heap state to
@@ -205,7 +204,7 @@ class RuntimePatch {
 
 ```
 
-<BlogImage src="/images/jitless_part1/aot_blob.svg" alt="AOT blob
+<BlogImage src="/images/figures/aot_blob.svg" alt="AOT blob
 structure showing code and patches" darkMode="invert" />
 
 
@@ -213,16 +212,7 @@ With the AOT code, metadata and patches, we have sufficient context to
 bootstrap. In a second build, we disassemble the code portion of the
 blob into a `.s`, which can be registered as a build input. At load
 time, the metadata portion of the blob is deserialized, along with the
-patches, which can be applied in the new heap and runtime context. Pointer
-patching helped speedup the baseline interpreter loading:
-
-```
-----------------------------------------------------------------
-Run (us)                    AOT load    JIT generate       delta
-----------------------------------------------------------------
-mean                        48 ±  14       274 ±  39     -82.6%
-----------------------------------------------------------------
-```
+patches, which can be applied in the new heap and runtime context.
 
 ### Strategy #2: Indirection Through a Pinned Register
 
@@ -241,13 +231,41 @@ record and emit these relocation when AOT mode is flipped on.
 
 <BlogImage src="/images/figures/aot_indirection_table.svg" alt="AOT indirection table structure showing pinned register, runtime data pointers, and dispatch entries" darkMode="invert" />
 
+We can see that loading the interpreter from AOT code is considerably faster
+than generating it. Unfortunately, while these results look great at
+first glance, one hundred micro-seconds is miniscule in the grand scheme.
+This delta is gathered from instrumentation intentionally placed right
+before and after our AOT loading will make an impact. That being said,
+generalizing AOT to other areas of the engine, such as self-hosted builtins
+or IC stubs may have a more tangible impact.
+
+```
+----------------------------------------------------------------
+Run (us)                    AOT load    JIT generate       delta
+----------------------------------------------------------------
+run 1                       42 ±   0       288 ±   0     -85.4%
+run 2                       40 ±   0       274 ±   0     -85.4%
+run 3                       46 ±   0       291 ±   0     -84.2%
+run 4                       43 ±   0       279 ±   0     -84.6%
+run 5                       42 ±   0       415 ±   0     -89.9%
+run 6                       61 ±   0       421 ±   0     -85.5%
+run 7                       54 ±   0       402 ±   0     -86.6%
+run 8                       68 ±   0       389 ±   0     -82.5%
+run 9                       59 ±   0       409 ±   0     -85.6%
+run 10                      44 ±   0       413 ±   0     -89.3%
+mean                        50 ±   9       358 ±  62     -86.1%
+----------------------------------------------------------------
+```
+
 ## An End to End Example
 
-Let's put it all together with a concrete example. Here is the
-emission of the `Symbol` opcode, which loads a well known symbol such
-as `Symbol.iterator` or `Symbol.toStringTag`.
+Let's trace the full lifecycle of a single runtime pointer through the
+AOT system. The opcode handler for `Symbol` in the baseline interpreter
+loads a well-known symbol such as `Symbol.iterator` or
+`Symbol.toStringTag`:
 
 ```c++
+// BaselineCodeGen.cpp
 template <>
 bool BaselineInterpreterCodeGen::emit_Symbol() {
   Register scratch1 = R0.scratchReg();
@@ -262,40 +280,90 @@ bool BaselineInterpreterCodeGen::emit_Symbol() {
 }
 ```
 
-The  call delegates to the patching or indirection
-strategy as shown earlier. At compile time it resolves the pointer
-directly; in AOT mode it emits a sentinel and registers a
-`RuntimePatch` to fix it up at load time.
+The runtime pointer is emitted by `movePtr` which loads the address of the
+well-known symbols table, which changes every launch. In
+a normal JIT build, this compiles to a `mov reg, imm64` with the
+pointer baked in as an immediate. In AOT mode, the same call is
+transparently redirected. `MacroAssembler::movePtr` is overridden to
+intercept pointer emission:
 
-## Evaluation
+```c++
+// AOTMacroAssembler.cpp
+void MacroAssembler::movePtr(ImmPtr imm, Register dest) {
+  if (isAOT()) {
+    auto slot = aot().indirectionTable()->findSlot(uintptr_t(imm.value));
+    if (slot) {
+      emitAOTSlotLoad(*slot, dest);
+      return;
+    }
+  }
+  MacroAssemblerSpecific::movePtr(imm, dest);
+}
+```
 
-Coming Soon! The AOT baseline interpreter currently passes 99% of JIT
-tests and should be working beneath the browser soon. That being said,
-we don't expect dramatic improvements out of the box. Baseline
-code-generation constitutes a minute fraction of the total startup
-time of an engine. The intent of this work is actually to setup the
-infrastructure for additional AOT codegen, namely for Inline Caches
-(ICs).
+When in AOT mode, every `ImmPtr` is checked against a reverse lookup
+on the indirection table. If the value matches a known slot, such as
+`WellKnownSymbols` in this case, the direct `mov imm64` is replaced
+with an indirect load through the table. If it doesn't match (e.g. a
+NaN-boxing tag constant), the original codegen path run. The
+indirection table itself is a flat array of `uintptr_t` slots, owned
+inline by `JitRuntime`. Each slot is enumerated by the `AOT_SLOTS`
+macro:
 
+```c++
+// AOT.h
+#define AOT_SLOTS(V)                    \
+  V(JSRuntimePtr)                       \
+  V(JSContextPtr)                       \
+  V(InterruptBits)                      \
+  V(JitActivation)                      \
+  V(ContextRealm)                       \
+  V(WellKnownSymbols)                   \
+  V(JitRuntime)                         \
+  V(LastBufferedCell)                    \
+  V(ProfilerEnabled)                    \
+  /* ... pre-barriers, C++ fns, etc. */ \
+  V(VMWrapperBase)
 
-## Reflection on the Approach
+class AOTIndirectionTable {
+  uintptr_t slots_[uint32_t(AOTSlot::Count)];
+ public:
+  static constexpr uint32_t offsetOfSlot(AOTSlot slot) {
+    return uint32_t(slot) * sizeof(uintptr_t);
+  }
+  // Reverse-lookup: find the slot for a given pointer value.
+  // Linear scan over ~30 slots; used only during codegen.
+  mozilla::Maybe<AOTSlot> findSlot(uintptr_t value) const;
+};
+```
 
-The biggest glaring problem with this infrastructure is that it is not
-automatically derived. If the interpreter maintainer decides to change
-code generation, they also need to keep in mind registering patches
-for AOT mode. This imposes more cognitive load on a complex project
-which already demands plenty. Another idea is to introduce some static
-analysis tool to automate the detection of leaks. On the other hand,
-our pointer patching technique benefits from not modifying the
-meticulously crafted codegen, hence we keep the emission of additional
-indirections to a minimum.
+For now, `emitAOTSlotLoad` resolves a slot in two loads. First it reads the
+cached table base pointer from the `BaselineFrame`, then indexes into
+the slot. Pinning a register is on the TODO list, and would allow us to
+get from two loads per indirection, down to one.
 
+```c++
+// AOTMacroAssembler.cpp
+void MacroAssembler::emitAOTSlotLoad(AOTSlot slot, Register dest) {
+  // Load 1: BaselineFrame -> table base pointer
+  loadPtr(Address(FramePointer,
+                  BaselineFrame::reverseOffsetOfAOTTableBase()), dest);
+  // Load 2: table[slot] -> value
+  int32_t slotOff = int32_t(AOTIndirectionTable::offsetOfSlot(slot));
+  loadPtr(Address(dest, slotOff), dest);
+}
+```
+
+Finally, at load time the table is populated with live pointers during
+`JitRuntime::initialize` The code is position-independent, the `.text`
+pages are immutable and shareable across processes, and the handler
+source is untouched.
 
 ## Conclusion
 
-Thank you for reading. If you are a code generation veteran and notice
-anything peculiar, please let me know. In part 2 we will explore
-supplying an AOT Inline Cache stub corpus to improve our AOT mode!
+Thank you for reading. If you noticed anything peculiar in this blog,
+please let me know. In part 2 we will explore supplying an AOT Inline
+Cache stub corpus to improve our AOT mode!
 
 ---
 
