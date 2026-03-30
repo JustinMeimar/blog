@@ -7,75 +7,75 @@
   description: [Relocation sites in the AOT code blob resolve pointers through indirect loads via a pinned register.],
 )
 
-#let table-entries = (
-  (off: "[0x00]", field: "JSContext*"),
-  (off: "[0x08]", field: "JitRuntime*"),
-  (off: "[0x10]", field: "Realm*"),
-  (off: "[0x18]", field: "wellKnownSymbols"),
-  (off: "[0x20]", field: "profilerFlags"),
-  (off: "[0x28]", field: "gcWriteBarrier"),
-  (off: "...",    field: "..."),
-  (off: "[0x100]", field: "dispatch[JSOP_ADD]"),
-  (off: "[0x108]", field: "dispatch[JSOP_SUB]"),
-  (off: "[0x110]", field: "dispatch[JSOP_MUL]"),
-  (off: "...",     field: "..."),
+#let table-rows = (
+  ("[0x00]",  "JSContext*"),
+  ("[0x08]",  "JitRuntime*"),
+  ("[0x10]",  "Realm*"),
+  ("[0x18]",  "profilerFlags"),
+  ("[0x20]",  "gcWriteBarrier"),
+  ("[0x28]",  "wellKnownSymbols"),
+  ("...",     "..."),
 )
 
 #let code-lines = (
-  (text: "...",                                          reloc: false),
-  (text: "cmp x0, x1",                                  reloc: false),
-  (text: "b.ne #handler",                                reloc: false),
-  (text: "ldr x0, [r13, #0x00]  ; JSContext*",           reloc: true),
-  (text: "str x2, [x0, #0x10]",                          reloc: false),
-  (text: "...",                                          reloc: false),
-  (text: "ldr x1, [r13, #0x18]  ; wellKnownSymbols",    reloc: true),
-  (text: "ldr x1, [x1, #0x40]",                          reloc: false),
-  (text: "...",                                          reloc: false),
-  (text: "ldr x3, [r13, #0x100] ; dispatch[JSOP_ADD]",  reloc: true),
-  (text: "br  x3",                                       reloc: false),
-  (text: "...",                                          reloc: false),
-  (text: "ldr x0, [r13, #0x08]  ; JitRuntime*",         reloc: true),
-  (text: "...",                                          reloc: false),
+  (offset: "",   text: "; emit_Symbol"),
+  (offset: "00", text: "movzbl 0x1(%r14), %ecx"),
+  (offset: "04", text: "movq  -0x20(%rbp), %rbx   ; aotTableBase_"),
+  (offset: "0b", text: "..."),
+  (offset: "0f", text: "movq  0x28(%rbx), %rbx    ; wellKnownSymbols"),
+  (offset: "16", text: "movq  (%rbx,%rcx,8), %rcx"),
+  (offset: "1a", text: "..."),
+  (offset: "1e", text: "leaq  .Ltable(%rip), %rbx ; dispatch (PIC)"),
+  (offset: "25", text: "movslq (%rbx,%rcx,4), %rcx ; rel32 offset"),
+  (offset: "29", text: "addq  %rbx, %rcx          ; base + rel"),
+  (offset: "2c", text: "jmp   *%rcx"),
+)
+
+#let code-regions = (
+  (start: 2, end: 2, fill: yellow.lighten(75%)),
+  (start: 4, end: 5, fill: blue.lighten(80%)),
+  (start: 7, end: 10, fill: green.lighten(80%)),
 )
 
 #let arrows = (
-  (code-i: 3,  tab-i: 0, wx: 0.8),
-  (code-i: 6,  tab-i: 3, wx: 1.6),
-  (code-i: 9,  tab-i: 7, wx: 2.4),
-  (code-i: 12, tab-i: 1, wx: 3.2),
+  (code-i: 4, tab-i: 5, wx: 1.0),
 )
 
-#let tab-header = [AOTIndirectionTable #text(weight: "regular", size: default-theme.sizes.offset, [(`.data`)])]
-#let blob-header = [AOT Code Blob #text(weight: "regular", size: default-theme.sizes.offset, [(`.text`)])]
+#let tab-header = [AOTIndirectionTable #text(weight: "regular", size: 8.5pt, [(`.data`)])]
+#let blob-header = [AOT Code Blob #text(weight: "regular", size: 8.5pt, [(`.text`)])]
 
 #context {
-  let tw = auto-mem-table-widths(table-entries, header: tab-header)
-  let tab-w = tw.off-w + tw.field-w
-  let code-w = auto-code-blob-width(code-lines, header: blob-header)
-  let rw = auto-register-widths("r13", "&AOTIndirectionTable")
+  let tab-cols = auto-grid-widths(("cell-alt", "cell"), table-rows, header: tab-header)
+  let tab-w = tab-cols.map(c => c.width).sum()
+  let code-w = auto-listing-width(code-lines, header: blob-header)
+
+  let reg-nw = measure-text-width(("%rbx",), 10pt, padding: 0.4)
+  let reg-vw = measure-text-width(("aotTableBase_",), 10pt, padding: 0.5)
+  let reg-name-role = (fill: luma(225), stroke: 0.5pt, text-size: 10pt, text-weight: "regular", font-key: "mono")
+  let reg-cols = ((width: reg-nw, default-role: reg-name-role), (width: reg-vw, default-role: "cell"))
 
   let reg-y = 0
-  let tab-y = -2.0
-  let blob-x = tab-w + 4.0
-  let rh = default-theme.geometry.row-height
+  let tab-y = -1.5
+  let blob-x = tab-w + 2.0
+  let rh = default-style.geometry.row-height
 
-  let tab-geo = mem-table-geo((0, tab-y), table-entries, header: tab-header, off-w: tw.off-w, field-w: tw.field-w)
-  let blob-geo = code-blob-geo((blob-x, reg-y + 0.2), code-w, code-lines, header: blob-header)
+  let tab-geo = grid-geo((0, tab-y), tab-cols, table-rows.len(), header: tab-header)
+  let blob-geo = listing-geo((blob-x, reg-y + 0.2), code-w, code-lines.len(), header: blob-header)
 
   cetz.canvas({
     import cetz.draw: *
 
-    register-display((0, reg-y), "r13", "&AOTIndirectionTable", name-w: rw.name-w, total-w: rw.total-w)
+    cell-grid((0, reg-y), reg-cols, (("%rbx", "aotTableBase_"),))
 
-    mem-table((0, tab-y), table-entries, header: tab-header, off-w: tw.off-w, field-w: tw.field-w)
+    cell-grid((0, tab-y), tab-cols, table-rows, header: tab-header)
 
     connector(
-      (rw.total-w / 2, reg-y - rh),
+      ((reg-nw + reg-vw) / 2, reg-y - rh),
       (tab-w / 2, tab-y),
-      style: "dashed",
+      dash: "dashed",
     )
 
-    code-blob((blob-x, reg-y + 0.2), code-w, code-lines, header: blob-header)
+    code-listing((blob-x, reg-y + 0.2), code-w, code-lines, header: blob-header, regions: code-regions)
 
     for a in arrows {
       let cy = (blob-geo.line-y)(a.code-i)
