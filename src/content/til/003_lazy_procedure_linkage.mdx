@@ -10,7 +10,9 @@ Linkage Table (PLT) and the Global Offset Table (GOT). Both structures
 are used for providing indirection. I was confused about what the
 difference was, and why both are needed.
 
-> The main complexity here is the lazy evaluation of PLT entries.
+> Note that it is possible for a single symbol to have both a PLT entry
+> and a GOT entry; this will happen for position independent code which
+> both calls a function and also takes its address.
 >
 > — [Linkers part 5](https://www.airs.com/blog/archives/42), Ian Lance Taylor
 
