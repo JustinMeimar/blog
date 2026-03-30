@@ -13,133 +13,121 @@ import BlogImage from '../../components/BlogImage.astro';
 ## Motivation for AOT JIT code
 
 JIT compilation is the process of producing code at runtime. For
-JavaScript engines, this is a practical necessity. Many useful
-semantic properties of a JavaScript program, namely its types, are
-only discovered at runtime. Type information is precisely what
-compilers need to emit fast code. Mozilla's SpiderMonkey engine lazily
-compiles JIT code through various mechanisms.
+JavaScript engines, this is a practical necessity. A program's types
+are only discovered at runtime, and type information is what compilers
+need to emit fast code. Mozilla's SpiderMonkey engine lazily compiles
+JIT code through several such mechanisms.
 
 
-The decision process of what to JIT compile, and when, is dictated by
-the expected performance gain. We hope that any compilation cost will
-be ammortized by more efficient execution. However, a JavaScript
-programs type semantics are undecidable, even at runtime. Accordingly,
-JIT compilers progressively refine the program into a more optimized
-form throughout execution. The simplest JIT mechanisms are [Inline
-Caches](links.inline_caches), operation local data structures which
-lazily compute and dispatch to type specialized fast-paths for
+What to JIT compile, and when, is dictated by the expected performance
+gain. The compilation cost should be amortized by more efficient
+execution. However, a JavaScript program's type semantics are
+undecidable, even at runtime. Accordingly, JIT compilers progressively
+refine the program into a more optimized form throughout execution.
+The simplest JIT mechanisms are [Inline
+Caches](links.inline_caches), operation-local data structures which
+lazily compute and dispatch to type-specialized fast-paths for
 polymorphic JS operators, like plus or property access. As regions of
 the program are executed more frequently, the JIT may _tier up_ into
-higher optimizations, such as [Baseline Compilation]() or [Ion]().
+higher tiers, such as [Baseline Compilation]() or [Ion]().
 
-There are a few intertwined motivations which make an AOT system for
-SpiderMonkey compelling. First is to notice that much of the JIT code
-an engine emits is deterministic and/or predictably generated.
-Bootstrapping such code means we could potentially attain faster
-startup by proving such code at compile time. Additionally, an AOT
-format exposes opportunities for offline optimizations. Normal
-conditions necessitate that JIT codegen be made stringently efficient,
-but with AOT, we have a surplus of both time and compute.
+A few intertwined motivations make an AOT system for SpiderMonkey
+compelling. First, much of the JIT code an engine emits is
+deterministic or predictably generated. Providing such code at compile
+time could attain faster startup. Additionally, an AOT format exposes
+opportunities for offline optimization. JIT codegen must normally be
+fast, but with AOT, we have a surplus of both time and compute.
 
-To contextualize, V8 has integrated bootstrapping into its engine in
-the form of [heap-snapshotting](links.v8_heap_snapshots) and [embedded
-builtins](links.v8_embedded_builtins), since at least 2018. Heap
+For context, V8 has long used
+[heap-snapshotting](links.v8_heap_snapshots) and, since around 2018,
+[embedded builtins](links.v8_embedded_builtins). Heap
 snapshotting captures the initialized heap state to avoid allocating
-and intiializing the same engine internals for every isolate. Embedded
-builtins, a technique more commensurate with the AOT formulation
-described here, roughly speaking, provides the JS standard library at
-compile time. Compared to V8, there are various SM-isms, such as the
-runtime-generated baseline interpreter, self-hosted builtins, CacheIR,
-and more, which flex and constrain the design space in unique ways.
-But overall, starting with AOT bootstrapping - some way to capture JIT
-code in relocatable format and reuse it in subsequent builds - is a
-good starting point.
+and initializing the same engine internals for every isolate. Embedded
+builtins, a technique more analogous to the AOT formulation described
+here, roughly provides the JS standard library at compile time.
+Compared to V8, various SM-isms, such as the runtime-generated
+baseline interpreter, self-hosted builtins, CacheIR, and more, flex
+and constrain the design space in unique ways. But overall, AOT
+bootstrapping - some way to capture JIT code in relocatable format and
+reuse it in subsequent builds - is a natural starting point.
 
 This work is part of my Masters research to develop an AOT mode for
-Firefox. It is in the early stages, so with that in mind, this post
-will be provide a cursory glance at how we bootstrapped one particular
-region of the engine - the Baseline interpreter. Subsequent parts of
-this series will cover extending the AOT infrastructure to JS
-builtins and Inline Cache stubs. 
+Firefox. It is in the early stages, so this post will provide an
+overview of how we bootstrapped one region of the engine - the
+Baseline interpreter. Subsequent parts of this series will cover
+extending the AOT infrastructure to JS builtins and Inline Cache
+stubs.
 
 
 ## Why a Generated Interpreter?
 
-You may be aware that high-performance interpreters are commonly
-written in assembly. Some advantages of doing so include attaining
-[fine-grained control flow](links.threaded_code), [manual code
-layout](links.code_layout), and escaping the C calling convention. In
-this respect, SpiderMonkey's [Baseline
+High-performance interpreters are commonly written in assembly.
+Advantages include [fine-grained control flow](links.threaded_code),
+[manual code layout](links.code_layout), and escaping the C calling
+convention. SpiderMonkey's [Baseline
 Interpreter](links.baseline_interp) is no exception. What may surprise
-you to hear, however, is that the baseline interpreter is _generated
-at runtime_.
+you, however, is that the baseline interpreter is _generated at
+runtime_.
 
-What does it mean for the interpreter to be _generated_? Mechanically
-speaking, a linear buffer is allocated on the heap, has instructions
-written into it, is memory-mapped as executable, then jumped into
-through a trampoline. This is the defining characteristic of JIT code.
-So to say the baseline interpreter is _generated_ simply means it is
-JIT code, like any other in the engine.
+What does it mean for the interpreter to be _generated_? Mechanically,
+a linear buffer is allocated on the heap, has instructions written
+into it, is memory-mapped as executable, then jumped into through a
+trampoline. This is the defining characteristic of JIT code. The
+baseline interpreter is _generated_ in the sense that it is JIT code,
+like any other in the engine.
 
-The more important question is, _why would an interpreter be
-generated?_ JIT compilers produce runtime-generated code out of
-necessity, due to the undecidability of guest-program semantics. But
-an interpreter has deterministic codegen, regardless of the program
-flowing through it. So why should it not be a regular compiled object
-available at link time? As we will see, runtime generation is an
-extremely natural, ergonomic way to produce code in SpiderMonkey.
-Additionally, runtime generated code can freely couple with already
-initialized engine components, a facet which on one hand, yields
-efficiency, and on the other, presents interesting challenges for
-providing such code AOT.
+More importantly, _why would an interpreter be generated?_ JIT
+compilers produce runtime-generated code out of necessity, due to the
+undecidability of guest-program semantics. But an interpreter has
+deterministic codegen, regardless of the program flowing through it.
+So why should it not be a regular compiled object available at link
+time? As we will see, runtime generation is an ergonomic way to
+produce code in SpiderMonkey. Additionally, runtime-generated code can
+freely couple with already initialized engine components, which yields
+efficiency but presents interesting challenges for providing such code
+AOT.
 
 ## Bootstrapping JIT Code
 
-Actually writing an interpreter in pure assembly is a grueling task.
-Instead, developers use high level languages to emit assembly for
-them. In SpiderMonkey, this interface is called the
+Writing an interpreter in pure assembly is a grueling task. Instead,
+developers use high-level languages to emit assembly for them. In
+SpiderMonkey, this interface is called the
 [MacroAssembler](links.masm). The baseline interpreter is specified
 entirely in the MASM DSL, written once and automatically lowered for
 each supported platform. But the MacroAssembler itself is _only
-available at runtime_, suggesting we have a chicken and egg problem:
-The MASM is part of the same build artifact as the engine, so how
-would we invoke the MASM to generate the baseline interpreter before
-the MASM itself is available? Such dependencies in code generation can
-generally be solved with [bootstrapping](links.bootstrapping).
-However, if this were the only reason preventing us from providing the
-baseline interpreter AOT, our solution would be clear. We could simply
-generate the interpreter, dump it to a file, attach it as a build
-input and rebuild. That sounds too nice. And in fact it is.
+available at runtime_, suggesting a chicken-and-egg problem: the MASM
+is part of the same build artifact as the engine, so how would we
+invoke the MASM to generate the baseline interpreter before it is
+available? This kind of dependency is generally solved with
+[bootstrapping](links.bootstrapping). However, if this were the only
+reason preventing us from providing the baseline interpreter AOT, our
+solution would be clear. We could simply generate the interpreter,
+dump it to a file, attach it as a build input and rebuild. That sounds
+too nice. And in fact it is.
 
 <BlogImage src="/images/jitless_part1/bootstrap.svg" alt="Two-pass
 bootstrap build pipeline" darkMode="invert" />
 
 Since the interpreter is generated relatively late in the startup
-lifecycle, the clever engineers at Mozilla noticed that they could
-bake in addresses of runtime objects directly into the interpreter
-code, such as [opcode handlers](links.opcode_handlers),
-[profiling](links.profiling) and debugging handlers, and, most
-importantly, the addresses in the [dispatch
-table](links.dispatch_table). Baking in runtime addresses is great for
-performance. We save the pointer dereferences otherwise necessary to
-access fields of our runtime objects, and the branch predictor
-benefits from seeing stable target addresses rather than values loaded
-through indirection. This is also the very reason for which
-bootstrapping the interpreter is difficult.
+lifecycle, engineers noticed they could bake addresses of runtime
+objects directly into the interpreter code, such as [opcode
+handlers](links.opcode_handlers), [profiling](links.profiling) and
+debugging handlers, and, most importantly, the addresses in the
+[dispatch table](links.dispatch_table). This saves the pointer
+dereferences otherwise necessary to access fields of runtime objects,
+and the branch predictor benefits from seeing stable target addresses
+rather than values loaded through indirection. This is also what makes
+bootstrapping the interpreter difficult.
 
 ## Relocatable JIT Code
 
-[ASLR](links.aslr) guarantees that our virtual address space is
-randomized each time our program is loaded. Our pre-compiled
-interpreter blob would dereference garbage pointers on any subsequent
-run if we bootstrapped directly. We need something akin to
-_relocations_ in dynamic libraries. When a dynamic library is loaded
-at some indeterminate location at runtime, the dynamic linker resolves
-references to those relocatable addresses by patching the
-[GOT](links.got). We went through the tedious process of identifying
-all the runtime pointers embedded into the baseline interpreter. The
-total count lands at 350 patch entries, falling into the following
-categories:
+[ASLR](links.aslr) randomizes the virtual address layout each time a
+program is loaded. A pre-compiled interpreter blob would dereference
+garbage pointers on subsequent runs if we bootstrapped directly. JIT
+code is designed to be ephemeral, so reusing it across processes
+requires something akin to _relocations_. We identified all the
+runtime pointers embedded in the baseline interpreter, totaling 350
+instances across the following categories:
 
 - Runtime data pointers (~10 kinds): `JSContext*`, `JitRuntime*`,
   `Realm*`, `wellKnownSymbols` and more. These point to heap objects
@@ -147,19 +135,19 @@ categories:
 
 - External code pointers: JSClass pointers, VM wrapper pointers,
   debugger trap handlers, and a handful of direct C++ function
-  pointers. A notable property of these pointers, is that many exist
-  at link time, or could be made to be so. In the future, partial
-  symbolization of the JIT code could offload these indirections to be
-  automatically resolved by the program linker.
+  pointers. A notable property of these pointers is that many exist
+  at link time, or could be made to. In the future, partial
+  symbolization of the JIT code could offload these indirections to
+  the program linker.
 
 
 ### Strategy #1: Pointer Patching
 
 When a runtime pointer is emitted via a `masm` method, it must be
-tracked. A natural choke point is through `masm.movePtr`, along with
-its analogues, `masm.loadPtr` and `masm.branchPtr`. For now, we
-constructed some wrappers around these interfaces to dispatch AOT
-emission and tracking.
+tracked. A natural choke point is `masm.movePtr`, along with its
+analogues, `masm.loadPtr` and `masm.branchPtr`. We constructed
+wrappers around these interfaces to dispatch AOT emission and
+tracking.
 
 ```c++
 void MacroAssembler::moveAOTReloc(AOTRelocKind kind, Register dest) {
@@ -173,20 +161,19 @@ void MacroAssembler::moveAOTReloc(AOTRelocKind kind, Register dest) {
       aot().emitPatchableMov(RuntimePatch(kind, 0), dest);
       return;
     case AOTStrategy::RegisterIndirect:
-      // Avoid patching by loading from a reliable pointer to the
-      // Zone, from where all pointers can be attained via extra
-      // arithmetic and loads.
-      emitAOTRelocViaZone(kind, dest);
+      // Avoid patching by loading from the AOTIndirectionTable
+      // via a pinned register.
+      emitAOTRelocViaTable(kind, dest);
       return;
   }
 }
 ```
 
 When `moveAOTReloc` is called with the patching strategy, a
-`RuntimePatch` is created, a struct which records the current offset,
-the kind of pointer to patch, and an additional payload if necessary.
-An array of `RuntimePatch` structs are serialized to the bottom of our
-AOT blob along with some metadata (mostly static offsets) required to
+`RuntimePatch` is created, recording the current offset, the kind of
+pointer to patch, and an additional payload if necessary. An array of
+`RuntimePatch` structs is serialized to the bottom of the AOT blob
+along with some metadata (mostly static offsets) required to
 reconstruct the `BaselineInterpreter` class on the load side.
 
 ```c++
@@ -220,12 +207,12 @@ class RuntimePatch {
 structure showing code and patches" darkMode="invert" />
 
 
-With the AOT code, metadata and patches, we have sufficient context to
-bootstrap. In a second build, we disassemble the code portion of the
-blob into `AOT.S`, which can be registered as a build input. At load
-time, the metadata portion of the blob is deserialized, along with the
-patches, which can be applied in the new heap and runtime context. Below
-is what the `AOT.S` scaffolding looks like.
+With the AOT code, metadata, and patches, we have sufficient context
+to bootstrap. In a second build, we disassemble the code portion of
+the blob into `AOT.S`, which can be registered as a build input. At
+load time, the metadata portion of the blob is deserialized, along
+with the patches, which can be applied in the new heap and runtime
+context. Below is the `AOT.S` scaffolding.
 
 ```asm
 .section .text.aot,"ax",@progbits
@@ -251,31 +238,30 @@ bl_aot_container_end:
 
 ### Strategy #2: Indirection Through a Pinned Register
 
-While pointer patching was functional, it had a fatal property.
+While pointer patching was functional, it had a critical drawback.
 Patching requires flipping page permissions from executable to
 writable and back. Syscalls are expensive! In addition, writing to the
 AOT code means the same `.text` pages, which could otherwise be shared
 across JSRuntime instances, must CoW (Copy on Write) for each
 instance. This motivated a second strategy. Similar to V8's
-[kRootRegister](). We pin a register pointing to an
+[kRootRegister](), we pin a register pointing to an
 `AOTIndirectionTable`, a GOT-inspired structure in `.data`. Relocation
 sites in the code resolve pointers through an indirect load using the
 pinned register as a base. This strategy keeps the AOT code immutable
 and shareable. We can still use the same MASM choke points to
-transparently record and emit these relocation when AOT mode is
+transparently record and emit these relocations when AOT mode is
 flipped on.
 
 <BlogImage src="/images/figures/aot_indirection_table.svg" alt="AOT
 indirection table structure showing pinned register, runtime data
 pointers, and dispatch entries" darkMode="invert" />
 
-We can see that loading the interpreter from AOT code is considerably faster
-than generating it. Unfortunately, while these results look great at
-first glance, one hundred micro-seconds is miniscule in the grand scheme.
-This delta is gathered from instrumentation intentionally placed right
-before and after our AOT loading will make an impact. That being said,
-generalizing AOT to other areas of the engine, such as self-hosted builtins
-or IC stubs may have a more tangible impact.
+Loading the interpreter from AOT code is considerably faster than
+generating it. Unfortunately, while these results look great at first
+glance, one hundred microseconds is minuscule in the grand scheme.
+This delta is gathered from instrumentation placed directly around the
+AOT load path. Generalizing AOT to other areas of the engine, such as
+self-hosted builtins or IC stubs, may have a more tangible impact.
 
 ```
 ----------------------------------------------------------------
@@ -297,11 +283,10 @@ mean                        50 ±   9       358 ±  62     -86.1%
 
 ## An End to End Example
 
-Now that we have established the AOT mechanism, we can trace the full
-lifecycle of a single runtime pointer. Below is the opcode handler for
-`Symbol` in the baseline interpreter. It loads a "well-known symbol"
-such as `Symbol.iterator` or `Symbol.toStringTag`, and uses a runtime
-pointer to do so.
+With the AOT mechanism established, we can trace the full lifecycle of
+a single runtime pointer. Below is the opcode handler for `Symbol` in
+the baseline interpreter. It loads a "well-known symbol" such as
+`Symbol.iterator` or `Symbol.toStringTag` via a runtime pointer.
 
 ```c++
 // BaselineCodeGen.cpp
@@ -319,7 +304,7 @@ bool BaselineInterpreterCodeGen::emit_Symbol() {
 }
 ```
 
-The runtime pointer can be found in `movePtr`.In a normal JIT build,
+The runtime pointer can be found in `movePtr`. In a normal JIT build,
 this compiles to a `mov reg, imm64` with the pointer baked in as an
 immediate. In AOT mode, the same call is transparently redirected to
 emit a semantically equivalent routine through the `AOTIndirectionTable`.
@@ -332,13 +317,14 @@ void MacroAssembler::movePtr(ImmPtr imm, Register dest) {
     if (!slot)
         MOZ_CRASH("Failed to reverse lookup pointer unknown pointer!");
     emitAOTSlotLoad(*slot, dest);
+    return;
   }
   MacroAssemblerSpecific::movePtr(imm, dest);
 }
 ```
 
-When in AOT mode, every `ImmPtr` is checked against a reverse lookup
-on the indirection table. If the value matches a known slot, such as
+In AOT mode, every `ImmPtr` is checked via reverse lookup in the
+indirection table. If the value matches a known slot, such as
 `WellKnownSymbols` in this case, the direct `mov imm64` is replaced
 with an indirect load through the table. The indirection table itself
 is a flat array of `uintptr_t` slots, owned inline by `JitRuntime`.
@@ -373,7 +359,7 @@ class AOTIndirectionTable {
 
 At the time of writing, the pinned register indirection is not yet
 working. Instead of one indirect load replacing each runtime pointer,
-we have `emitAOTSlotLoad` resolve in two loads. First it reads the
+we have `emitAOTSlotLoad` resolve in two loads. First, it reads the
 cached table base pointer from the `BaselineFrame`, then indexes into
 the slot. Register pinning should be working by the next post. 
 
@@ -389,30 +375,30 @@ void MacroAssembler::emitAOTSlotLoad(AOTSlot slot, Register dest) {
 }
 ```
 
-Finally, at load time the table is populated with live pointers during
-`JitRuntime::initialize` The code is position-independent, the `.text`
-pages are immutable and shareable across processes, and the handler
-source is untouched. We can now run FireFox with an AOT provided
-baseline interpreter!
+Finally, at load time, the table is populated with live pointers
+during `JitRuntime::initialize`. The code is position-independent, the
+`.text` pages are immutable and shareable across processes, and the
+handler source is untouched. We can now run Firefox with an
+AOT-provided baseline interpreter!
 
 ## Conclusion
 
 Thank you for reading. If you noticed anything peculiar in this blog,
-please let me know. In part 2 we will explore supplying an AOT Inline
+please let me know. In part 2, we will explore supplying an AOT Inline
 Cache stub corpus to improve our AOT mode!
 
 ---
 
 <small>
 
-1. For architectures like x86-32 where free registers are not an
-abundant resource, we need to fall back to loading from the frame each time.
-Currently x64 is the only architecture the prototype works for.
+1. For architectures like x86-32, where free registers are scarce, we
+need to fall back to loading from the frame each time. Currently, x64
+is the only supported architecture.
 
-2. For IC stubs, as we will talk about in part 2, we put a `JSZone*`
-pointer into the `ICStub` data class. [Chase](links.chase) worked on this in
-parallel, and we think we can consolidate to using the `JSZone*` from
-the BaselineFrame instead.
+2. For IC stubs, as we will discuss in part 2, we put a `JSZone*`
+pointer into the `ICStub` data class. [Chase](links.chase) worked on
+this in parallel, and we think we can consolidate to the `JSZone*`
+from the BaselineFrame instead.
 
 3. Specifically, non-zero 64-bit immediates whose upper 17 bits are
 all zeros, which is the canonical form for user-space addresses on

@@ -18,7 +18,7 @@
 )
 
 #let code-lines = (
-  (offset: "",   text: "; emit_Symbol"),
+  (offset: "",   text: "; BaselineInterpreterCodeGen::emit_Symbol"),
   (offset: "00", text: "movzbl 0x1(%r14), %ecx"),
   (offset: "04", text: "movq  -0x20(%rbp), %rbx   ; aotTableBase_"),
   (offset: "0b", text: "..."),
@@ -33,8 +33,7 @@
 
 #let code-regions = (
   (start: 2, end: 2, fill: yellow.lighten(75%)),
-  (start: 4, end: 5, fill: blue.lighten(80%)),
-  (start: 7, end: 10, fill: green.lighten(80%)),
+  (start: 4, end: 4, fill: yellow.lighten(75%)),
 )
 
 #let arrows = (
@@ -42,7 +41,7 @@
 )
 
 #let tab-header = [AOTIndirectionTable #text(weight: "regular", size: 8.5pt, [(`.data`)])]
-#let blob-header = [AOT Code Blob #text(weight: "regular", size: 8.5pt, [(`.text`)])]
+#let blob-header = [AOT Baseline Interpreter #text(weight: "regular", size: 8.5pt, [(`.text`)])]
 
 #context {
   let tab-cols = auto-grid-widths(("cell-alt", "cell"), table-rows, header: tab-header)

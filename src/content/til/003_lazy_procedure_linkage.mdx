@@ -5,41 +5,41 @@ description: "Digging up an example from part 5 of Ian Lance Taylor's Linker Ser
 tags: ["til", "linkers", "systems"]
 ---
 
-Part 5 of Ian Lance Taylot's infamous linker series introduces the
-Procedure Linkage Table (PLT) and the Global Offset Table (GOT). Both
-structures are used for providing indirection. I was confused about
-what the difference was, and why both are needed.
+Part 5 of Ian Lance Taylor's linker series introduces the Procedure
+Linkage Table (PLT) and the Global Offset Table (GOT). Both structures
+are used for providing indirection. I was confused about what the
+difference was, and why both are needed.
 
-The GOT table is data. This is essential since, when the dynamic
-linker encouters a symbol with dynamic linkage for which a
-corresponding entry in the GOT does not exist, it must create one.
-Creation involves writing bytes, so it makes sense the GOT is in data.
+> The main complexity here is the lazy evaluation of PLT entries.
+>
+> — [Linkers part 5](https://www.airs.com/blog/archives/42), Ian Lance Taylor
 
-I always wondered why the GOT was not sufficient entirely? While the
-GOT is used for any ELF symbols with dynamic linkage, it turns out that
-function calls are special.
+The GOT is data. This is essential since, when the dynamic linker
+encounters a symbol with dynamic linkage for which a corresponding
+entry in the GOT does not exist, it must create one. Creation involves
+writing bytes, so it makes sense the GOT is in data.
 
-Lazy function resolution mechanism. The code for a PLT entry is set out
+I always wondered why the GOT was not entirely sufficient? While the
+GOT is used for any ELF symbols with dynamic linkage, it turns out
+that function calls are special. The code for a PLT entry is set out
 in a clever way. A GOT entry exists for every procedure symbol with
-dynamic linking. Initially _the address of each GOT entry is set to
-the PLT stub + `size_t`.
-
+dynamic linkage. Initially, the address of each GOT entry is set to
+the second instruction of the PLT stub.
 
 ```asm
 0x0000000000401030 <printf@plt>:
   # 1. Jump to the address currently stored in the GOT
   401030: jmp    QWORD PTR [rip+0x2fd2]  # (Points to the GOT entry for printf)
   # 2. Push the "relocation index" for printf onto the stack
-  401036: push   0x0                     
+  401036: push   0x0
   # 3. Jump to the common "PLT0" stub (the dynamic linker resolver)
   40103b: jmp    0x401020 <.plt>
 ```
 
-This is the lazy binding mechanism. Upon first invocation, the GOT entry
-bounces the control flow back into the section instruction of the PLT
-entry, which jumps into the dynamic linker resolver. The resolver writes
-the GOT entry for the function, such that all subsequent calls go through
-the GOT. Lazy binding!
+This is the lazy binding mechanism. Upon first invocation, the GOT
+entry bounces control flow back into the second instruction of the PLT
+entry, which jumps into the dynamic linker resolver. The resolver
+writes the GOT entry for the function, such that all subsequent calls
+go through the GOT. Lazy binding!
 
 This should make sense now why the PLT is code and GOT is data.
-
