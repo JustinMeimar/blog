@@ -6,7 +6,6 @@ import sitemap from "@astrojs/sitemap";
 import expressiveCode from "astro-expressive-code";
 import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 import { pluginLanguageLabel } from "./src/plugins/expressive-code-language-label";
-import icon from "astro-icon";
 import pagefind from "astro-pagefind";
 import { remarkReadingTime } from "./remark-reading-time.mjs";
 import { remarkResolveLinks } from "./remark-resolve-links.mjs";
@@ -53,13 +52,12 @@ export default defineConfig({
     }),
     mdx(),
     sitemap(),
-    icon(),
     pagefind(),
   ],
   vite: {
     plugins: [tailwindcss()],
-    ssr: {
-      noExternal: ["react-tweet"],
+    optimizeDeps: {
+      exclude: ["@resvg/resvg-js"],
     },
   },
   markdown: {
