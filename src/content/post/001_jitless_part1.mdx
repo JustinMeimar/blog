@@ -314,7 +314,7 @@ time calculation. Below is the handler for the `Symbol` opcode in the
 Baseline interpreter. Its function is to load a "well-known
 symbol" such as `Symbol.iterator` or `Symbol.toStringTag`. The way it
 finds the symbol is by peeking back into the engine itself. While the
-[WellKnownSymbols] storage has a static lifetime, it is still heap
+[WellKnownSymbols](https://searchfox.org/firefox-main/rev/e959a4adbef21a366443993ab176f43461d38c28/js/src/vm/Runtime.h#151) storage has a static lifetime, it is still heap
 allocated, and therefore, of an indeterminate address. Since we
 embed this address, we must provide a relocation.
 
