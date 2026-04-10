@@ -14,7 +14,7 @@ into a second build? Better yet, why would you want to do so?
 ## What is AOT JIT code?
 
 JIT compilation involves producing code at runtime. For JavaScript
-engines, this is a practical necessity. A guest programs types are
+engines, this is a practical necessity. A guest program's types are
 _discovered_ at runtime, and type information is precisely what
 compilers need to emit fast code. A common approach to this problem
 for dynamic language runtimes involves instrumenting generic execution
@@ -23,17 +23,11 @@ that incurring the compilation cost to optimize some region of the
 program may be profitable, the engine does so. What to compile, and
 when, is the core decision boundary for a JIT.
 
-AOT JIT code is distinct from AOT JavaScript. The later is a much more
-general problem of mapping a dynamic language, with full genericity,
-to a compiled program. See [AOT
-JavaScript](https://dl.acm.org/doi/10.1145/3393673.3276950) for an
-excellent formulation of the problem. It is an imposing challenge,
-cutting across the grain of the nature of a dynamic language. AOT JIT
-code, what we concern ourselves in this post, is a much more
-constrained problem consisting of making internal engine routines,
-JavaScript builtins, or predictable type-specialziled subroutines of
-guest programs, position independent. If provided AOT, JIT code it can
-be made reusable cross-process through an indirection mechanism.
+> **Note:** AOT JIT code is distinct from AOT JavaScript, which is the
+> much harder problem of compiling a dynamic language ahead of time in
+> full generality. See [AOT JavaScript](https://dl.acm.org/doi/10.1145/3393673.3276950)
+> for a formulation of that problem. Here, we focus only on making
+> internal engine routines position independent.
 
 ## Motivation for AOT JIT code
 
@@ -50,15 +44,14 @@ iOS or embedded devices, make runtime code generation difficult or
 outright impossible. Providing JIT code AOT means we could improve the
 performance of Spidermonkey on these platforms.
  
-This post will explore the design space for making
-JIT code position-independent. We target one region of the engine to
-bootstrap into an AOT format, the _Baseline Interpreter_, and discuss
-the results. In subsequent posts in this series we may extend our AOT
-system of additional components of the engine, namely Inline Caches
-and self-hosted JS builtins. These two areas, particularily the
-builtins, offer the most fertile ground for optimization. For the
-process explored below, our primary goal is _not to reduce
-performance_, rather than improve it.
+This post explores making JIT code position-independent. We target one
+region of the engine, the _Baseline Interpreter_, and bootstrap it into
+an AOT format. Our primary goal is to avoid regressing performance, not
+to improve it.
+
+In subsequent posts, we may extend the AOT system to Inline Caches and
+self-hosted JS builtins. These two areas, particularly the builtins,
+offer the most fertile ground for optimization.
 
 > The work I'm describing here is preliminary and subject to change.
 While built atop SpiderMonkey, this is not an official Mozilla dev blog.
@@ -90,9 +83,9 @@ interpreter has deterministic codegen, regardless of the program
 flowing through it. So why should it not be a regular compiled object
 available at link time? As we will see, runtime generation is an
 ergonomic way to produce code in SpiderMonkey. Additionally, by virtue
-of it's late arrival in the lifecycle of a JIT, runtime-generated code
+of its late arrival in the lifecycle of a JIT, runtime-generated code
 can freely couple with already initialized engine components. While
-this process can yield efficiency, it is precisely that which creates
+this process can yield efficiency, it is precisely this coupling that creates
 interesting challenges for providing such code AOT.
 
 ## Bootstrapping JIT Code
@@ -144,12 +137,12 @@ starting point.
 
 JIT code is designed to be ephemeral. Being produced lazily, at
 runtime, there is no reason why it shouldn't take advantage of its
-late arrival. With engine internals are already initialized, we
+late arrival. With engine internals already initialized, we
 mentioned previously that absolute pointers are freely embedded into
 the code. Since [ASLR](links.aslr) randomizes the virtual address
 layout each time a program is loaded, the interpreter code would
 dereference garbage pointers if we reused it directly. Our JIT code
-needs to not be ephemeral. To reuse it across processes requires
+needs to outlive a single process. To reuse it across processes requires
 something akin to _relocations_. The first step in this process is
 identifying exactly which symbols need relocations. To setup the
 relocation problem, we tabulated the categories and frequency of
