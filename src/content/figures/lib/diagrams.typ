@@ -1,6 +1,7 @@
 #import "style.typ": *
 #import "layout.typ": *
 #import "shapes.typ": *
+#import "charts.typ": *
 
 #let figure-page(number: none, title: none, description: none, style: default-style, body) = {
   set page(width: auto, height: auto, margin: 1.5em, fill: none)

@@ -12,6 +12,19 @@
   ),
   connector: (stroke-weight: 0.6pt, paint: black),
   geometry: (row-height: 0.56, line-height: 0.46, padding: 0.5, code-pad: 0.3, border-weight: 0.8pt),
+  chart: (
+    size: (9, 6),
+    palette: (
+      rgb("#4e79a7"), rgb("#f28e2b"), rgb("#e15759"),
+      rgb("#76b7b2"), rgb("#59a14f"), rgb("#edc948"),
+      rgb("#b07aa1"), rgb("#ff9da7"), rgb("#9c755f"), rgb("#bab0ac"),
+    ),
+    stroke-weight: 1.2pt,
+    mark-size: 0.12,
+    label-size: 10pt,
+    tick-size: 9pt,
+    bar-width: 0.8,
+  ),
 )
 
 #let resolve-role(style, role-name) = {
