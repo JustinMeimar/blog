@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FIGURES_DIR="src/content/figures"
-OUT_DIR="public/images/figures"
+FIGURES_DIR="$HOME/tools/figure-factory"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+OUT_DIR="$SCRIPT_DIR/public/images/figures"
 
 mkdir -p "$OUT_DIR"
 

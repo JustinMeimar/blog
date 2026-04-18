@@ -52,7 +52,7 @@ export default defineConfig({
     }),
     mdx(),
     sitemap(),
-    pagefind(),
+    ...(process.argv.includes("dev") ? [] : [pagefind()]),
   ],
   vite: {
     plugins: [tailwindcss()],
