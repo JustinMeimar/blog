@@ -128,7 +128,7 @@ export const GET: APIRoute = async () => {
                     letterSpacing: "0.05em",
                     marginBottom: 32,
                   },
-                  children: "blockchain engineer",
+                  children: "compilers & systems",
                 },
               },
               // Description
@@ -143,7 +143,7 @@ export const GET: APIRoute = async () => {
                     lineHeight: 1.5,
                     maxWidth: 800,
                   },
-                  children: "Building decentralized systems and developer tooling for blockchain applications.",
+                  children: "Working on JIT compilers, SpiderMonkey, and developer tooling.",
                 },
               },
             ],
