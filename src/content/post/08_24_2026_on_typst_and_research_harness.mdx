@@ -1,0 +1,210 @@
+
+This post describes the research setup I used for writing my first paper,
+which I recently submitted to CGO 2027. Whether it gets accepted or not, the
+decsision process of _writing a paper_ has now become immensely interesting
+to me. It is my impression that one's partiuclar methodology for research,
+i.e the _system_ or _strategy_ one uses to complete their research, is
+mostly a hidden art. Common wisdom floats around, like {EXAMPLE} but the
+general _end-to-end_ system most people use to complete their research
+appears to be a hidden art.
+
+### Magic Number Bad
+
+Let me first introduce a problem which you may have encoutered if you write
+papers. You are writing a section and insert some numerical result from an
+experiment. If you are editing in latex, that might look like this:
+
+```latex
+\section{Results}
+
+Silencing \textit{BRCA1} cut DNA repair efficiency by 60\%
+compared to controls ($n=12$).
+```
+
+In doing so you have just introduced two dependencies which you must
+manually keep track of. If you re-run some data, that n=12 number may
+change. If the baseline for comparisson is reconsidered, the 60% efficiency
+number may update. Moreover, if these results are repeated, for example in
+the abstract and the evaluation sections, you now have duplicated the source
+of truth. In computer science terminology, by considering the paper as a
+program, we might say this example uses magic numbers where it should use a
+variable.
+
+Now perhaps the iteration rate over experimental setups varies less in other
+fields, as it does in Computer Science, where there virtualization of
+resources can create a degenerative abundance of choice and lack of
+deciseveness. Other sciences still have to interface with the physical
+world, and everything in the physical world is more expensive. In any case,
+I suspect there are still a large quantity of representation decisions made
+long after experiments are run for which this churn in numerical results
+occurs.
+
+This leads to the first principle of research: no magic numbers. In Typst, I
+can create a variable, assign the value once, and reference it any number of
+times in the prose.
+
+```Typst
+#let repair_reduction = 60
+#let sample_size = 12
+
+= Results
+
+Silencing _BRCA1_ cut DNA repair efficiency by #repair_reduction% compared to controls ($n=#sample_size$).
+```
+
+### The Distinct Responsibility of Scripts
+
+Despite rolling around in an abundance of virtual resources, performing
+experiments on a computer shares at least one characteristic with the hard
+sciences: waiting around for results. It is desirable that once these
+long-running experiments be performed they are not invoked again
+unecesssarily. Ensuring this is the case comes down to the organization of
+scripts.
+
+Suppose we are measuring the steady-state performance of a `for` loop that
+runs for a _long time_. Say 1 billion iterations, which I've extrapolated
+takes ~4 min on my machine. To impose a totally artifical source of
+experimental observation, suppose each iteration spews out a letter from the
+alphabet `A-Z`, according to some hidden distribution. The goal of our
+research is to statistically model this hidden distribution by observing the
+data. Consider two configurations:
+
+```C
+#include<stdio.h>
+int main() {
+	// TODO: print alphabet letters to some distribution
+	return 0;;
+}
+```
+
+_Configuration A_: A single script `do_research.py` which runs the program
+containing the loop, pipes the output into a parser to count the occurences
+of each letter. The counted letters being held in a map like `letters = {A:
+123, B: 544, .... Z: 5541}` we hand off to a routine which performs MAP,
+fitting the data under some prior distribution. Then once we have our
+predicted distribution, we plot it using `matplotlib` and save it to a PDF.
+
+_Configuration B_: Three scripts called `experiment.py`, `analyze.py`, and
+`derive.py`. The experiment script runs the loop and captures the verbose
+result into a file a date and time-stamp named file
+`loop_experiemnt_08_29_2026_15:32.json` {FOOTNOTE: yes the filesystem
+records the timestamp too, used in file name for uniqueness}. The analysis
+script then reads the experimental data pointed to it, parses out the
+letters then runs the statistical fitting. This script too outputs its own
+`loop_analysis_08_29_2026_15:38.json`. This file is fed into `derive.py`
+which saves `loop_figure_08_29_2026_15:38.json` and opens it.
+
+By designing scripts with _orthogonal_ and _composable_ responsibilties, the
+research pipeline can be paused or resumed from any stage. If there is a bug
+somewhere in the analysis or derivation, the experimental results can likely
+be salvaged.
+
+Designing scripts with these three orthogonal responsibilities also allows
+for _horizontal scalability_. If you're experiemnt is comparing two
+different statistical methods, say MAP and MLE, you can write two scripts,
+point them both to the experimental result, then design a derivation script
+to consume both outputs and plot an accuracy for each model under test data.
+If you want to iterate on figure designs, the derivation scripts scale
+similarly.
+
+Lastly, in the first class of experiment scripts, scaling can also be
+acheived by adding variants. Suppose we want to measure this entire pipeline
+with a different set of hidden distributions. Then we can produce
+`experiment_A.py`, `experiment_B.py` which invoke the loop computation with
+different models. These will hook into the same analysis scripts and
+derivation scripts by way of a shared JSON output format, acting like a
+contract.
+
+> This entire process should be reminiscent of those spinny cylinder things
+  in kids' parks or in IKEA where you can create a different creature by
+  spinning around the head, upper and body cylinders into unique
+  configurations.
+
+### Kind of Like Burying Fossils
+
+Some sort of split described above is likley not too uncommon. What I'll
+describe in this section is a research harness which presents the interfaces
+for composing a research pipeline from such kinds of scripts automatically.
+The project is called [Fossil](), because running an experiment should be
+somewhat like burrying a record in the sand. It should come up one day when
+you dig for it untouched, and with certain provenence. Never should you
+encounter an experimental result and ask yourself: "When, where, or how was
+this created?"
+
+Examples probably work better than words. Below is a TOML configuration file for one of my
+experiments, which are laid out in a directory like so:
+
+```shell
+➜  ls -l
+Aug 17 10:07 0-0-static-tables
+Aug 17 10:07 3-2-intra-workload
+Aug 20 19:58 3-3-inter-workload
+Aug 22 17:02 3-4-sm-v8-ics-micro-bench
+Aug 17 16:07 6-1-corpus-construction
+Aug 17 10:08 7-1-corpus-coverage
+Aug 24 10:32 7-2-ambermonkey-perf
+Aug 23 10:15 7-3-v8-jitless-comparison
+Aug 17 10:24 7-4-indirection-overhead
+Aug 23 10:15 7-5-cross-process-memory-sharing
+Aug 17 10:08 7-6-binary-size
+Aug 17 16:54 7-8-aot-attachment-cost
+Aug 20 14:02 configurations.toml
+Aug 23 10:14 project.toml
+Aug 23 10:15 README.md
+Aug 17 10:11 retired-3-1-jit-memory
+Aug 17 10:11 retired-7-10-cross-process-jit-memory-awsy
+Aug 17 10:11 retired-7-3-am-perf
+Aug 17 10:11 retired-7-4-indirection-overhead-raptor
+Aug 17 10:11 retired-7-4-jetstream3-startup
+Aug 17 10:11 retired-7-5-cross-process-memory-octane
+Aug 17 10:11 retired-7-6-shell-memory-scaling
+```
+
+``
+```toml
+name = "7-2-ambermonkey-perf"
+description = "Speedometer 3 AmberMonkey performance Evaluation"
+default_iterations = 3
+allow_failure = true
+
+[analyze]
+speedometer-detail = "analyses/parse_speedometer.py"
+
+[figures.subtest-bars]
+analysis = "speedometer-detail"
+script   = "figures/subtest_bars.py"
+
+[figures.tier-throughput]
+analysis = "speedometer-detail"
+script   = "figures/tier_throughput.py"
+
+[figures.aot-tradeoff]
+analysis = "speedometer-detail"
+script   = "figures/aot_tradeoff.py"
+
+[tables.perf]
+analysis = "speedometer-detail"
+script   = "figures/speedometer_table.py"
+
+[variables]
+MACH    = "./mach raptor -t speedometer3 --app firefox --browser-cycles 1 --page-cycles 3 --binary @BIN_AOT --setenv MOZ_HEADLESS=1"
+ION_OFF = "--setpref javascript.options.ion=false"
+RESULT  = "cat testing/mozharness/build/raptor.json"
+
+INTERP   = "JIT_OPTION_disableJitBackend=true"
+AOT      = "JIT_OPTION_useAOTImage=true JIT_OPTION_aotOnly=true"
+IC_ONLY  = "JIT_OPTION_aotSkipBaselineFn=true"
+NO_REGEX = "JIT_OPTION_nativeRegExp=false"
+
+[variants]
+interp-only    = "@CLEAN_AOT $INTERP                    $MACH          1>&2 && $RESULT"
+aot-corpus-ic  = "@CLEAN_AOT $AOT    $IC_ONLY $NO_REGEX $MACH $ION_OFF 1>&2 && $RESULT"
+aot-corpus     = "@CLEAN_AOT $AOT             $NO_REGEX $MACH $ION_OFF 1>&2 && $RESULT"
+default-no-ion = "@CLEAN_AOT                            $MACH $ION_OFF 1>&2 && $RESULT"
+default        = "@CLEAN_AOT                            $MACH          1>&2 && $RESULT"
+```
+### Wiring the Harness into Typst
+
+The first section established that raw numbers in prose should be cannonicalized to a single variable. The second section emphasized that a giant bag of scripts should be partitioned into the tuple: (Experiment, Analysis, Derivation). The third section yapped about my custom research harness which uses this process.
+
+This section will motivate how a research harness can be configured to write experimental outputs _directly into the variables a Typst program consumes_. Doing so allows one to re-run an experiment and have their manuscript automatically updated.
