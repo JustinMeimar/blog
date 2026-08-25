@@ -2,10 +2,10 @@
 import Base from "../../layouts/Base.astro";
 import Header from "../../components/Header.astro";
 import Footer from "../../components/Footer.astro";
-import TilPreview from "../../components/TilPreview.astro";
-import { getAllTILs } from "../../utils/til";
+import MicroblogPreview from "../../components/MicroblogPreview.astro";
+import { getAllMicroblogs } from "../../utils/microblog";
 
-const tils = await getAllTILs();
+const entries = await getAllMicroblogs();
 
 function seededRandom(seed: number) {
   const x = Math.sin(seed) * 10000;
@@ -90,7 +90,7 @@ function generateGridLayout(numCards: number): Card[] {
   return cards;
 }
 
-const gridLayout = generateGridLayout(tils.length);
+const gridLayout = generateGridLayout(entries.length);
 
 function getHeightClass(rowSpan: number): string {
   const heights: Record<number, string> = {
@@ -123,33 +123,33 @@ function getColSpanClass(colSpan: number): string {
 ---
 
 <Base
-  title="TIL"
-  description="Today I Learned"
+  title="Micro-blog"
+  description="Short-form notes and things learned"
 >
   <div class="max-w-2xl mx-auto px-6 py-12 md:py-20 topo-mask">
-    <Header activeSection="til" />
+    <Header activeSection="micro-blog" />
 
     <div class="mb-8 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
 
     <section class="animate-fade-up stagger-2">
       {
-        tils.length > 0 ? (
+        entries.length > 0 ? (
           <div class="grid grid-cols-12 gap-3 auto-rows-min">
-            {tils.map((til, i) => {
+            {entries.map((entry, i) => {
               const layout = gridLayout[i];
               const heightClass = getHeightClass(layout.rowSpan);
               const colSpanClass = getColSpanClass(layout.colSpan);
               return (
                 <div class={colSpanClass}>
-                  <TilPreview
-                    title={til.data.title}
-                    description={til.data.description}
-                    publishDate={til.data.publishDate}
-                    slug={til.id}
-                    tags={til.data.tags}
+                  <MicroblogPreview
+                    title={entry.data.title}
+                    description={entry.data.description}
+                    publishDate={entry.data.publishDate}
+                    slug={entry.id}
+                    tags={entry.data.tags}
                     index={i}
                     heightClass={heightClass}
-                    content={til.body}
+                    content={entry.body}
                   />
                 </div>
               );
@@ -157,7 +157,7 @@ function getColSpanClass(colSpan: number): string {
           </div>
         ) : (
           <p class="font-serif text-sm text-[var(--text-muted)] italic">
-            No TIL entries yet. Check back soon.
+            No micro-blog entries yet. Check back soon.
           </p>
         )
       }

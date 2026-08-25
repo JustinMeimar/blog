@@ -4,16 +4,16 @@ import Base from "../../layouts/Base.astro";
 import Header from "../../components/Header.astro";
 import Footer from "../../components/Footer.astro";
 import PostPreview from "../../components/PostPreview.astro";
-import TilPreview from "../../components/TilPreview.astro";
+import MicroblogPreview from "../../components/MicroblogPreview.astro";
 import { getAllTags as getAllPostTags, getPostsByTag } from "../../utils/posts";
-import { getAllTags as getAllTilTags, getTILsByTag } from "../../utils/til";
+import { getAllTags as getAllMicroblogTags, getMicroblogsByTag } from "../../utils/microblog";
 
 export async function getStaticPaths() {
   const postTags = await getAllPostTags();
-  const tilTags = await getAllTilTags();
+  const microblogTags = await getAllMicroblogTags();
 
   // Combine all unique tags
-  const allTags = new Set([...postTags.keys(), ...tilTags.keys()]);
+  const allTags = new Set([...postTags.keys(), ...microblogTags.keys()]);
 
   return [...allTags].map((tag) => ({
     params: { tag },
@@ -22,7 +22,7 @@ export async function getStaticPaths() {
 
 const { tag } = Astro.params;
 const posts = await getPostsByTag(tag);
-const tils = await getTILsByTag(tag);
+const microblogs = await getMicroblogsByTag(tag);
 
 const postsWithReadingTime = await Promise.all(
   posts.map(async (post) => {
@@ -34,7 +34,7 @@ const postsWithReadingTime = await Promise.all(
   })
 );
 
-const totalCount = posts.length + tils.length;
+const totalCount = posts.length + microblogs.length;
 ---
 
 <Base title={`#${tag} — justinmeimar`} description={`Posts tagged with #${tag}`}>
@@ -83,23 +83,23 @@ const totalCount = posts.length + tils.length;
         </>
       )}
 
-      {/* TILs Section */}
-      {tils.length > 0 && (
+      {/* Micro-blog Section */}
+      {microblogs.length > 0 && (
         <>
           <h2 class="font-mono text-xs tracking-widest uppercase text-[var(--text-faint)] mb-6">
-            TILs ({tils.length})
+            Micro-blog ({microblogs.length})
           </h2>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tils.map((til, i) => (
-              <TilPreview
-                title={til.data.title}
-                description={til.data.description}
-                publishDate={til.data.publishDate}
-                slug={til.id}
-                tags={til.data.tags}
+            {microblogs.map((entry, i) => (
+              <MicroblogPreview
+                title={entry.data.title}
+                description={entry.data.description}
+                publishDate={entry.data.publishDate}
+                slug={entry.id}
+                tags={entry.data.tags}
                 index={i}
                 heightClass="h-40"
-                content={til.body}
+                content={entry.body}
               />
             ))}
           </div>
@@ -109,7 +109,7 @@ const totalCount = posts.length + tils.length;
       {/* No results */}
       {totalCount === 0 && (
         <p class="font-serif text-sm text-[var(--text-muted)] italic">
-          No posts or TILs found with this tag.
+          No posts or micro-blog entries found with this tag.
         </p>
       )}
     </section>

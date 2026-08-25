@@ -1,27 +1,27 @@
 import { getCollection, type CollectionEntry } from "astro:content";
 
-export type TIL = CollectionEntry<"til">;
+export type Microblog = CollectionEntry<"micro-blog">;
 
-export async function getAllTILs(): Promise<TIL[]> {
-  const tils = await getCollection("til", ({ data }) => {
+export async function getAllMicroblogs(): Promise<Microblog[]> {
+  const entries = await getCollection("micro-blog", ({ data }) => {
     return import.meta.env.PROD ? !data.draft : true;
   });
 
-  return tils.sort(
+  return entries.sort(
     (a, b) => b.data.publishDate.valueOf() - a.data.publishDate.valueOf()
   );
 }
 
-export async function getTILsByTag(tag: string): Promise<TIL[]> {
-  const tils = await getAllTILs();
-  return tils.filter((post) => post.data.tags.includes(tag.toLowerCase()));
+export async function getMicroblogsByTag(tag: string): Promise<Microblog[]> {
+  const entries = await getAllMicroblogs();
+  return entries.filter((post) => post.data.tags.includes(tag.toLowerCase()));
 }
 
 export async function getAllTags(): Promise<Map<string, number>> {
-  const tils = await getAllTILs();
+  const entries = await getAllMicroblogs();
   const tags = new Map<string, number>();
-  tils.forEach((til) => {
-    til.data.tags.forEach((tag) => {
+  entries.forEach((entry) => {
+    entry.data.tags.forEach((tag) => {
       tags.set(tag, (tags.get(tag) ?? 0) + 1);
     });
   });

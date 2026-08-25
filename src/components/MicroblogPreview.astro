@@ -1,5 +1,5 @@
 ---
-import { formatDate } from "../utils/til";
+import { formatDate } from "../utils/microblog";
 
 interface Props {
   title: string;
@@ -40,7 +40,7 @@ const contentPreview = content
     "overflow-hidden",
   ]}
 >
-  <a href={`/til/${slug}`} class="block flex-1 flex flex-col overflow-hidden">
+  <a href={`/micro-blog/${slug}`} class="block flex-1 flex flex-col overflow-hidden">
     <time class="font-mono text-[10px] text-[var(--text-faint)] mb-2 flex-shrink-0">
       {formatDate(publishDate)}
     </time>

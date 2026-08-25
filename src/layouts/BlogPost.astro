@@ -20,7 +20,7 @@ interface Props {
   ogImage?: string;
   minutesRead?: string;
   headings?: Heading[];
-  activeSection?: 'writing' | 'projects' | 'til';
+  activeSection?: 'writing' | 'projects' | 'micro-blog';
 }
 
 const { title, description, publishDate, updatedDate, tags = [], ogImage, minutesRead, headings = [], activeSection = 'writing' } = Astro.props;
@@ -143,11 +143,11 @@ const showToc = headings.length > 3;
 
         <!-- Back to posts -->
         <a
-          href={activeSection === 'til' ? '/til' : '/posts'}
+          href={activeSection === 'micro-blog' ? '/micro-blog' : '/posts'}
           class="inline-flex items-center gap-2 font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
         >
           <span>←</span>
-          <span>Back to all {activeSection === 'til' ? 'TILs' : 'posts'}</span>
+          <span>Back to all {activeSection === 'micro-blog' ? 'micro-blog entries' : 'posts'}</span>
         </a>
 
         <!-- Comments -->

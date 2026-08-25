@@ -71,8 +71,8 @@ const project = defineCollection({
     }),
 });
 
-const til = defineCollection({
-  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/til" }),
+const microblog = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/micro-blog" }),
   schema: z.object({
     title: z.string().max(80),
     description: z.string().max(160).optional(),
@@ -85,4 +85,4 @@ const til = defineCollection({
   }),
 });
 
-export const collections = { post, project, til };
+export const collections = { post, project, "micro-blog": microblog };
