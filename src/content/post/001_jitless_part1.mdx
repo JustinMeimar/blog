@@ -9,69 +9,58 @@ import BlogImage from '../../components/BlogImage.astro';
 import { links } from './001_jitless_part1.ts';
 
 
-> What happens when you serialize ephemeral JIT code and bootstrap it
-into a second build? Better yet, why would you want to do so?
+> What happens when you serialize ephemeral JIT code, bootstrap it, and make
+  it available at compile time? Better yet, why would you want to do so?
 
 ## What is AOT JIT code?
 
-JIT compilation involves producing code at runtime. For
-JavaScript engines, this is a practical necessity. A guest
-program's types are _discovered at runtime_, and type information
-is precisely what compilers need to emit fast code. A common
-technique to accrue this runtime information is through
-instrumentation. In addition to executing the program, the
-interpreter is instrumented to also record counters, types, etc.
-When instrumentation suggests that compiling some region of the
-program into an optimized form may be profitable, the engine does
-so! What to compile, and when, is the core decision boundary for
-a JIT. If we understand JIT code as any machine code generated on
-the fly, then Ahead of Time (AOT) JIT code refers to the process of
-providing JIT code to the engine _at startup_.
-
-> **Note:** AOT JIT code is distinct from AOT JavaScript, which is the
-> much harder problem of compiling a dynamic language ahead of time in
-> full generality. See [AOT JavaScript](https://dl.acm.org/doi/10.1145/3393673.3276950)
-> for a formulation of that problem.
+JIT compilation involves producing code at runtime. For JavaScript engines,
+specializing to dynamic behavior results in significant performance
+improvements. A guest program's types are _discovered at runtime_, and type
+information is precisely what compilers need to emit fast code. A common
+technique to accrue this runtime information is through instrumentation. In
+addition to executing the program, the interpreter is instrumented to record
+counters, types, etc. When heuristics suggest compiling some portion of the
+program into an optimized form may be profitable, the engine does just that.
+What to compile, and when, is the core decision boundary for a JIT. If we
+understand JIT to be native code which is generated on the fly, then Ahead of
+Time (AOT) JIT simply refers to the process of providing JIT code to the
+engine _at startup_.
 
 ## Motivation for AOT JIT code
 
-There are a few intertwined motivations that make proving JIT
-code AOT compelling. First, we observe that a significant portion
-of JIT code is deterministic or predictable in nature. Providing
-such code at compile time could help attain faster startup,
-preventing the need to continually recompile ephemeral JIT code
-across runtimes. Secondly, an AOT format exposes opportunities
-for optimization. Ordinary JIT codegen is heavily time and
-compute constrained, limiting the set of feasible
-transformations. With an AOT format, we have a surplus of both
-time _and_ compute. Lastly, certain platforms, like iOS or
-embedded devices, make runtime code generation difficult or
-outright impossible. Providing JIT code AOT means we could
-improve the performance of Spidermonkey on these platforms.
+There are a few intertwined motivations that make proving JIT code AOT
+compelling. First, we observe that a significant portion of JIT code is
+deterministic or predictable in nature. Providing such code at compile time
+could help attain faster startup, preventing the need to continually
+recompile ephemeral JIT code across runtimes. Secondly, an AOT format
+exposes opportunities for optimization. Ordinary JIT codegen is heavily time
+and compute constrained, limiting the set of feasible transformations. With
+an AOT format, we have a surplus of both time _and_ compute. Lastly, certain
+platforms, like iOS or embedded devices, make runtime code generation
+difficult or outright impossible. Providing JIT code AOT means we could
+improve the performance on these platforms.
  
-This post explores the design space for making JIT code
-position-independent. We target one region of the engine to
-start, the _Baseline Interpreter_, and bootstrap it into an AOT
-format. In subsequent posts, we may extend the AOT system to
-Inline Caches and self-hosted JS builtins. These two areas,
-particularly the builtins, offer the most fertile ground for
-optimization.
+This post explores the design space for making JIT code reusable in
+SpiderMonkey. We target one region of the engine to start, the _Baseline
+Interpreter_, and bootstrap it into an AOT format. In subsequent posts, we
+may extend the AOT system to Inline Caches and self-hosted JS builtins.
+These two areas, particularly the builtins, offer the most fertile ground
+for optimization.
 
-> The work I'm describing here is preliminary and subject to a
-high churn rate. Also, while built atop SpiderMonkey, this is not
-an official Mozilla dev blog. Consider it a public entry from my
-Masters research journal. If you find the urge to point out any
-flaws, please send me an email or leave a comment below :)
+> The work I'm describing here is preliminary and subject to change.
+  Consider it a public entry from my Masters research journal. If you find
+  the urge to point out any flaws, please send me an email or leave a
+  comment below :)
 
 ## Why a Generated Interpreter?
 
-High-performance interpreters are commonly written in assembly.
-Advantages of doing so include attaining fine-grained control flow,
-[manual code layout]({links.code_layout}), escaping the C calling
-convention and more. SpiderMonkey's [Baseline
-Interpreter]({links.baseline_interp}) is no exception. What may surprise
-you, however, is that the baseline interpreter is _generated at
-runtime_.
+High-performance interpreters are commonly written in assembly. Advantages
+of doing so include attaining fine-grained control flow, [manual code
+layout]({links.code_layout}), escaping the C calling convention and more.
+SpiderMonkey's [Baseline Interpreter]({links.baseline_interp}) is no
+exception. What may surprise you, however, is that the baseline interpreter
+is _generated at runtime_.
 
 What does it mean for the interpreter to be _generated_? Mechanically
 speaking, a linear buffer is allocated on the heap, has instructions

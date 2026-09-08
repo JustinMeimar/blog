@@ -1,33 +1,40 @@
 ---
 title: "On Typst and my Research Harness"
 publishDate: 2026-08-24
-description: "Principles from my First Iteration of a Research Pipeline."
+description: "Principles from my First Iteration of a Research Pipeline - (Draft)"
 tags: ["typst", "research"]
 ---
 
-This post describes the research setup I used while writing my first paper,
-which will be submitted to [CGO 2027](https://2027.cgo.org/). Whether it
-gets accepted or not, the process of writing a paper has become immensely
-interesting to me. It is my impression that one's particular methodology for
-research—i.e., the _system_ or _strategy_ one uses to complete their
-research—is mostly a hidden art. Common wisdom floats around, such as
-Simon Peyton Jones's advice to "[write the paper
-first](https://www.microsoft.com/en-us/research/academic-program/write-great-research-paper/),"
-but the general _end-to-end_ system people use to complete their research
-seems under-discussed.
+A research harness is used to organize experiments, analyses, figures, and
+other facets of measuring software. When doing research, a final draft
+likely won't arise from a linear sequence of keystrokes. The story emerges
+from a circuitous loop of new ideas, designing experiments, adapting to
+unforeseen results, and a long, long tail of tweaking figures and
+appearances. A research harness should make the inevitable back-tracking
+involved in the research process less painful.
 
-### Magic Number Bad
+It's my impression that most research setups stay hidden away behind command
+lines. There isn't the same public discussion of practical approaches to
+research, as there is in Software engineering, where basic principles such
+as DRY or the substitution principle aim to reduce the maintenance burden of
+projects, and durability of abstractions respectively. A research endeavor
+which may span many months, or years, can benefit from interpretation under
+a software engineering lens. There was, at least in my case this summer
+writing my first paper, a lot of unnecessary re-doing of work due to poor
+organization. This post describes some of the principles I distilled into a
+custom harness.
 
-Let me first introduce a problem that you may have encountered if you write
-papers. You are writing a section and insert some numerical result from an
-experiment. If you are editing in
+
+### Magic Number Programming in Prose
+
+Let me first introduce a problem that you may have encountered if you have
+written a paper. You are writing a section and insert some numerical result
+from an experiment. If you are editing in
 [LaTeX](https://www.latex-project.org/), that might look like this:
 
 ```latex
 \section{Results}
-
-Silencing \textit{BRCA1} cut DNA repair efficiency by 60\%
-compared to controls ($n=12$).
+The change cut DNA repair efficiency by 60% compared to controls ($n=12$).
 ```
 
 In doing so, you have just introduced two dependencies that you must
@@ -64,7 +71,7 @@ Silencing _BRCA1_ cut DNA repair efficiency by #repair_reduction% compared to co
 
 ### The Distinct Responsibilities of Scripts
 
-Despite rolling around in an abundance of virtual resources, performing
+Despite rolling in an abundance of virtual resources, performing
 experiments on a computer shares at least one characteristic with the hard
 sciences: waiting around for results. It is desirable that, once these
 long-running experiments have been performed, they not be run again
@@ -141,18 +148,14 @@ it renders into.
 ➜  ls -l
 Aug 17 10:07 0-0-static-tables
 Aug 20 19:58 3-3-inter-workload
-Aug 22 17:02 3-4-sm-v8-ics-micro-bench
 Aug 17 16:07 6-1-corpus-construction
 Aug 17 10:08 7-1-corpus-coverage
 Aug 24 10:32 7-2-ambermonkey-perf
-Aug 23 10:15 7-3-v8-jitless-comparison
 Aug 17 10:24 7-4-indirection-overhead
 Aug 23 10:15 7-5-cross-process-memory-sharing
 Aug 17 10:08 7-6-binary-size
-Aug 17 16:54 7-8-aot-attachment-cost
 Aug 20 14:02 configurations.toml
 Aug 23 10:14 project.toml
-Aug 23 10:15 README.md
 ```
 
 Each experiment directory contains a [TOML](https://toml.io/en/)
