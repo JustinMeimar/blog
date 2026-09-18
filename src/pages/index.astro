@@ -27,7 +27,7 @@ const featuredProjects = await getFeaturedProjects();
     <Header activeSection="home" />
 
     <!-- Introduction -->
-    <section class="mb-12 animate-fade-up stagger-1">
+    <section class="mb-6 animate-fade-up stagger-1">
       <p class="font-serif text-lg md:text-xl leading-relaxed font-light">
       Hi, I'm Justin. A first year Masters student at the University of
       Alberta studying JIT compilers.
@@ -35,13 +35,13 @@ const featuredProjects = await getFeaturedProjects();
     </section>
 
     <!-- Divider -->
-    <div class="mb-16 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
+    <div class="mb-6 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
 
     <!-- Writing Section -->
-    <section class="mb-20 animate-fade-up stagger-2">
+    <section class="mb-8 animate-fade-up stagger-2">
       <a 
         href="/posts"
-        class="group flex items-baseline justify-between mb-8 -mx-2 px-2 py-1 rounded transition-colors duration-200 hover:bg-[var(--bg-paper)]"
+        class="group flex items-baseline justify-between mb-3 -mx-2 px-2 py-1 rounded transition-colors duration-200 hover:bg-[var(--bg-paper)]"
       >
         <h2
           class="font-mono text-xs tracking-widest uppercase text-[var(--text-muted)] group-hover:text-[var(--text)] transition-colors duration-200"
@@ -55,7 +55,7 @@ const featuredProjects = await getFeaturedProjects();
         </span>
       </a>
 
-      <div class="space-y-8">
+      <div class="space-y-3">
         {
           recentPostsWithReadingTime.length > 0 ? (
             recentPostsWithReadingTime.map((post, i) => (
@@ -66,6 +66,7 @@ const featuredProjects = await getFeaturedProjects();
                 slug={post.id}
                 readingTime={post.minutesRead}
                 index={i}
+                compact
               />
             ))
           ) : (
@@ -78,10 +79,11 @@ const featuredProjects = await getFeaturedProjects();
     </section>
 
     <!-- Projects Section -->
-    <section class="mb-20 animate-fade-up stagger-5">
+    {featuredProjects.length > 0 && (
+    <section class="mb-8 animate-fade-up stagger-5">
       <a 
         href="/projects"
-        class="group flex items-baseline justify-between mb-8 -mx-2 px-2 py-1 rounded transition-colors duration-200 hover:bg-[var(--bg-paper)]"
+        class="group flex items-baseline justify-between mb-3 -mx-2 px-2 py-1 rounded transition-colors duration-200 hover:bg-[var(--bg-paper)]"
       >
         <h2
           class="font-mono text-xs tracking-widest uppercase text-[var(--text-muted)] group-hover:text-[var(--text)] transition-colors duration-200"
@@ -95,7 +97,7 @@ const featuredProjects = await getFeaturedProjects();
         </span>
       </a>
 
-      <div class="space-y-12">
+      <div class="space-y-6">
         {
           featuredProjects.map((project) => (
             <article class="hover-lift p-4 -mx-4 rounded transition-all duration-300 hover:bg-[var(--bg-paper)]">
@@ -138,11 +140,12 @@ const featuredProjects = await getFeaturedProjects();
         }
       </div>
     </section>
+    )}
 
     <!-- Contact -->
-    <section class="mb-16 animate-fade-up stagger-6">
-      <div class="p-6 rounded-sm bg-[var(--bg-paper)]">
-        <p class="font-serif text-sm mb-4 text-[var(--text-muted)]">
+    <section class="mb-8 animate-fade-up stagger-6">
+      <div class="p-4 rounded-sm bg-[var(--bg-paper)]">
+        <p class="font-serif text-sm mb-3 text-[var(--text-muted)]">
           Please send me an email if you'd like to get in touch!
         </p>
         <div class="flex gap-4">
