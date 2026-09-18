@@ -1,0 +1,72 @@
+---
+title: "Tiny Custom CLI Tools"
+publishDate: 2026-09-18
+description: "Two of my Favourite Tiny CLI Tools"
+tags: ["tools", "cli", "rust"]
+---
+
+
+I've been having fun designing custom CLI tools in Rust recently.
+[Jot](https://github.com/JustinMeimar/jot) is a ~500 LOC note taking
+program. Note variants are defined in `~/.jot/config.toml`. Templates for a
+given command are automatically discovered in
+`~/.jot/templates/<cmd>.template`.
+
+```
+[jot.note]
+subcommand = "n"
+
+[jot.research]
+subcommand = "res"
+
+[jot.prompt]
+subcommand = "p"
+
+[jot.startup-ideas]
+subcommand = "su"
+
+[jot.messages]
+subcommand = "m"
+
+[jot.microblog]
+subcommand = "mb"
+
+[jot.long-term-todos]
+subcommand = "lt-todo"
+```
+
+Using `jot <command|subcommand>` opens `$EDITOR` in a date and time-stamp
+named file. When typing out long, expository prompts I prefer to leave the
+agent harness for a raw text file, which I find relaxes the impulse to jam
+enter prematurely. Same goes for emails.
+
+
+Writing little custom tools is now amazingly cheap with agents. Another tool
+I've written is (creatively) named
+[Recall](https://github.com/JustinMeimar/recall). Researching on the
+internet I often encounter new words and concepts that I'd like to remember.
+Typing `recall` opens a simple KV template for a flash card. There is a
+simple tagging system.
+
+```
+recall list --last 3
+
+11  antecedent                                              [vocabulary]
+    A prior thing being refered to. In grammar, "Sarah" is the atecedent in
+    "Sarah found her keys". In logic, it is the first half of an if-then
+    statement.
+
+12  prosaic                                                 [vocabulary]
+    Dull, ordinary and lacking imagination or excitement.
+
+13  nascent                                                 [vocabulary]
+    Just coming into existence, starting to grow or in the early stages of
+    development.
+```
+
+If looking something up on the internet gives me a 5-10% chance of
+remembering, writing it down once into a deck system bumps it up to maybe
+25%. Recalling then further improves retention. The last three entries in
+the deck are all vocabulary. I sincerely apologize if you found this
+micro-blog to be _prosaic_.
+
