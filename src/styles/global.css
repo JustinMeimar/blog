@@ -71,8 +71,8 @@
   --text-faint: var(--color-text-faint);
   --border: var(--color-border);
   --accent: var(--color-accent);
-  --accent-pop: #c44d4d;
-  --link-color: #14b8a6;
+  --accent-pop: #b65c32;
+  --link-color: #a34d28;
 }
 
 [data-theme="dark"] {
