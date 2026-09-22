@@ -30,34 +30,35 @@
       {
         text(weight: "bold")[#title]
         if subtitle != none [ | #subtitle]
+        if location != none [ #text(style: "italic")[(#location)]]
       },
       if date != none [#text(style: "italic")[#date]]
     )
-    #if location != none {
-      text(size: 8.5pt, style: "italic")[#location]
-    }
     #v(1pt)
     #body
-    #v(3pt)
+    #v(2pt)
   ]
 }
 
 // Header
 #align(center)[
   #text(size: 18pt, weight: "bold")[Justin Meimar]
-  #v(2pt)
+  #v(0.5pt)
   #text(size: 9pt)[
     #link("mailto:meimar@ualberta.ca")[meimar\@ualberta.ca] #h(8pt)
     #link("https://github.com/JustinMeimar")[GitHub]
   ]
-  #v(1pt)
+  #v(0.5pt)
   #text(size: 8.5pt, fill: rgb("#666"))[Systems Software Engineer | Edmonton, Alberta, Canada]
 ]
 
-#v(2pt)
+#v(0pt)
 
-*University of Alberta* - MSc. Computer Science #h(1fr) _Sep 2025 – Aug 2027_\
-Researching JIT compilers and techniques in collaboration with Mozilla. Designing mechanisms for reusing deterministic and statistically JIT code in an ahead-of-time setting.
+#section("Education")
+
+*University of Alberta* - Thesis-Based MSc. Computer Science #h(1fr) _Sep 2025 – Aug 2027_\
+GPA: 3.8 / 4.0\
+Key Classes: Formal Verification, Advanced Compiler Design, Machine Learning II, Convex Optimization.
 
 #v(4pt)
 
@@ -68,6 +69,15 @@ Key Classes: Algorithms, Compilers, Software Engineering, Operating Systems, Com
 #v(2pt)
 
 #section("Experience")
+
+#entry(
+  "Research Assistant",
+  subtitle: "Compiler Design Optimization Lab — Mozilla-sponsored",
+  location: "Edmonton, Alberta",
+  date: "Sep 2025 – Present"
+)[
+  - Designed and implemented AmberMonkey, an AOT code-generation target in SpiderMonkey that reuses Baseline and inline-cache JIT artifacts across processes.
+]
 
 #entry(
   "Tensor Compiler Intern",
@@ -84,19 +94,17 @@ Key Classes: Algorithms, Compilers, Software Engineering, Operating Systems, Com
   location: "Edmonton, Alberta",
   date: "Jan 2023 – Dec 2025"
 )[
-  - CMPUT 415 Compiler Design (Head TA) - F24, F25: Teaching students about LLVM, MLIR and other compiler skills.
-  - CMPUT 429 Computer Architecture II - W24: Helped students learn and write RISCV assembly code.
-  - CMPUT 229 Computer Architecture I - W23
+  - Head TA for CMPUT 415 Compiler Design (Fall 2024 and 2025), teaching LLVM, MLIR, and practical compiler development.
+  - TA for CMPUT 429 and 229 Computer Architecture (Winter 2024 and 2023), including RISC-V assembly programming.
 ]
 
 #entry(
-  "Research Assistant",
+  "Summer Research Intern",
   subtitle: "Compiler Design Optimization Lab",
   location: "Edmonton, Alberta",
   date: "May – Aug 2024"
 )[
-  - Researched modern compiler techniques such as copy patch for JIT compilation.
-  - Debugged and upgraded solution compilers to LLVM 18, introduced new dialects and lowerings.
+  - Researched copy-and-patch JITs; upgraded compilers to LLVM 18 and added MLIR dialects and lowerings.
 ]
 
 #entry(
@@ -139,11 +147,9 @@ Key Classes: Algorithms, Compilers, Software Engineering, Operating Systems, Com
 #block(breakable: false)[
   #section("Stack")
 
-  *Skills* / Fluent in UNIX - Strong written and verbal communication - Persistent problem solver
+  *Compiler & Systems* / JIT and AOT Compilation - Code Generation - Performance Analysis - Linux
 
-  *Tools* / Git - CMake - Docker - Nginx - ANTLR - vim - ssh - gdb - valgrind
+  *Tools* / LLVM - MLIR - Git - CMake - GDB - Valgrind - Docker
 
-  *Languages* / C/C++ - Python - JavaScript & TypeScript - Bash - awk - Rust - SQL
+  *Languages* / C++ - C - Python - JavaScript - TypeScript - Rust - Bash - SQL
 ]
-
-
