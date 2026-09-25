@@ -1,0 +1,232 @@
+---
+title: "On Typst and my Research Harness"
+publishDate: 2026-08-24
+description: "Principles from my First Iteration of a Research Pipeline - (Draft)"
+tags: ["typst", "research"]
+---
+
+> TLDR: How to comb a hairball of research scripts into a neat, organized
+  harness. Specifically, one which auto-updates your paper metrics when
+  experiments run. We also reflect on designing software which is
+  _horizontally scalable_ to AI agents, which have the propensity to spew
+  code like a broken fire hydrant. A research harness scales with agentic
+  script writing by defining strict interfaces and composable roles to
+  adhere to.
+
+A research harness organizes the measurement of software, including
+experiments, analyses, and figures. A final draft scarcely arises from a
+linear sequence of keystrokes. Rather, research is produced from a
+circuitous loop of insights, unforeseen results, experimental redesigns, and
+an ever-long tail of minor tweaks. A good research harness, therefore,
+should make iterative research as friction-less as possible. Specifically, a
+harness should, by construction, ensure experiments are reproducible, easy
+to modify, and output results with clear provenance.
+
+There is good reason for viewing the entire research process from an
+software design lens. A research endeavor may span months, or even years. It
+attains that degree of reuse which justifies migrating from a collection of
+ragged scripts to a proper management system. There was, at least in my case
+this summer writing my first paper, a lot of unnecessary re-doing of work
+due to poor organization. This post describes some of the principles I've
+distilled into a custom harness. We will start at the top, with what my
+self-updating paper draft workflow looks like, then work down into the
+architecture of the harness that drives it.
+
+> Throughout this post I use [Typst](https://typst.app/docs/), a dual
+  type-setting and scripting language. The syntax should be intuitive.
+
+### The Paper _is_ the Program 
+
+In programming, an old adage goes on about "not repeating oneself."
+Duplicate sources of truth ripen the area for programmer induced errors.
+Yet, when writing a paper, there is a natural impulse to write the prose
+exactly how it is expected to appear. Consider a headline result from an
+abstract, which almost certainly is repeated again in some later section.
+
+```typst
+=== Results
+The change cut DNA repair efficiency by 60% compared to controls (n=12).
+
+// The middle of your paper ....
+
+=== Evaluation
+A normalized experiment using a sample population of 12 resulting in
+the DNA repair efficiency improving by 60% over the controlled population.
+```
+
+Ignoring whether this biology jargon is coherent, the issue of duplicated
+metrics is clear. After re-running an experiment, every occurrence of `60%`
+must be updated manually. If the experimental design changes, same goes for
+`n=12`. When pursuing performance results, writing is typically interleaved
+with improvements to the measured system itself. Without using variables in
+prose an ugly game of wack-a-mole ensues. Even if you (or more likely your
+terminally online robot friend) are shrewd enough to consistently whack each
+occurrence into place, updating manually involves duplicate work
+nonetheless. Even for models, maintaining all updates manually is tricky for
+a large draft.
+
+
+Instead, experimental parameters and results should live in _variables_.
+This is merely the [DRY](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself) principle, and is nothing incredible on it's own.
+Simple as it may be, defining variables is the fulcrum from which an
+auto-updating research draft derive it's leverage. _No magic numbers in Prose_.
+
+```typst
+#let repair-efficiency = "60%"
+#let sample-size = 12
+
+=== Results
+The change cut DNA repair efficiency by #repair-efficiency compared to controls (n=#sample-size).
+
+=== Evaluation
+A normalized experiment using a sample population of #sample-size resulting in
+the DNA repair efficiency improving by #repair-efficiency over the controlled population.
+```
+
+### Research Harness Outputs Can Indirectly Update the Draft 
+
+By using variables for metrics `N` sources of repetition receive a single
+definition. Many would say this is good enough. But as a true programmer, I
+am lazy. This single source of truth is still too burdensome for me to
+update. Thankfully laziness is the mother of invention. Notice that the
+research harness continually observes the latest results. Why not inform the
+harness of our draft, having _it_ update the paper? Herein lies the utility
+of _Typst as a programming language_. The harness will be setup to write the
+artifacts from an experiment, while Typst project reads them in. JSON tables
+effectively become an intermediate representation. Suppose the harness emits
+tables shaped like so:
+
+
+```json
+{
+  "table": "Speedups over the Baseline",
+  "columns": ["Baseline", "Version-A", "Version-B"],
+  "rows": {
+    "Workload A": { "Baseline": 1, "Version-A": 1.4, "Version-B": 1.8 },
+    "Workload B": { "Baseline": 1, "Version-A": 0.9, "Version-B": 1.5 },
+    "GeoMean":    { "Baseline": 1, "Version-A": 1.12, "Version-B": 1.64 }
+  }
+}
+```
+
+The rows and cells have names, so we can look up a result without knowing
+its position. Adding another workload or version leaves existing lookups
+intact. The `columns` list gives the order in which to display the values.
+
+We can write a small Typst library to render the table or retrieve a value.
+Typst already provides `json()` to read the file; the helpers just operate
+on the loaded data.
+
+```typst
+#let render-json-table(data) = {
+  let cells = data.rows.pairs().map(((name, row)) => (
+    name, ..data.columns.map(column => row.at(column))
+  )).flatten()
+
+  table(
+    columns: data.columns.len() + 1,
+    table.header([Workload], ..data.columns),
+    ..cells,
+  )
+}
+
+#let cell-value(table, key) = table.at(key)
+```
+
+The accessor is deliberately just a name for Typst's dictionary lookup.
+For this software benchmark, we can now derive the table and the headline
+result from the same file:
+
+```typst
+#let results = json("results/speedups.json")
+#let geomean = results.rows.at("GeoMean")
+#let version-b-speedup = cell-value(geomean, "Version-B")
+
+#render-json-table(results)
+
+=== Results
+Version B achieves a geometric mean speedup of #version-b-speedup×
+over the baseline.
+```
+
+### Fossil -- The Research Harness
+
+The interaction between Typst and research artifacts has been established:
+the harness will perform an experiment, it's results will be emitted to a
+file, and the paper which indirectly refrences results by keying the
+respective JSON table. If we are using a command like `typst watch`, which
+incrementally re-compiles our paper live, we can even observe our draft
+update in real time once an experiment completes. Pretty cool!
+
+We can now divert to the design of the harness itself: Fossil. The name is
+meant to imbue the image of convering a long ago burried fossil (perhaps a
+research artifact from many months ago.) If this fossil was burried in
+pristine condition, we should not dig it up and find ourselfs at a loss for
+what species it is, or if it is merely some funnily shaped petrified wood.
+No, no, with a research harness, we should be _certain_ this fossil was
+buried one year ago, what species it is, what the last meal it ate, what
+it's name was... etc. In other words, all artifacts have clear provenance.
+
+
+Below these aspirations of gradure, a harness is really just a command
+wrapper. It provides indirection for invoking scripts, combing otherwise
+ragged scripts through a unified interface. Doing so avoids a hairball of
+unorganized scripts, which is a particularly accessible outcome given the
+willingness of AI agents to spay code everywhere. We essentially want
+structured boundaries in which agent written scripts can proliferate en-mass
+in an organized, horizontally scalable fashion, while being structurally
+constrained to assume one role -- do one particular job well -- by
+subscribing to defined interfaces.
+
+The distinct script "roles" partition responsibility. There are three
+classes in Fossil: running experiments, analyzing outputs, and producing
+structured artifacts such as tables or plots. By separating scripts into
+distinct roles, iterating on the research project holistically will become
+much cheaper.
+
+### The Fossil API
+
+A research project recieves it's own `project.toml`. Experiments live in
+adjacent directories, each containing their own `fossil.toml` where
+experiment variants, runner scripts, analysis scripts and derivation scripts
+live. I typically prefix my experiments with the section of the paper their
+results are emitted into.
+
+```
+Aug 17 10:07 0-0-static-tables
+Aug 20 19:58 3-3-inter-workload
+Aug 17 16:07 6-1-corpus-construction
+Aug 17 10:08 7-1-corpus-coverage
+Aug 24 10:32 7-2-ambermonkey-perf
+Aug 17 10:24 7-4-indirection-overhead
+Aug 23 10:15 7-5-cross-process-memory-sharing
+Aug 17 10:08 7-6-binary-size
+Aug 23 10:14 project.toml
+```
+
+A per-experiment `fossil.toml` looks like so:
+
+```
+name = "0-1-baseline-cache-simulation"
+default_iterations = 1
+allow_failure = true
+
+[variants]
+speedometer3 = "record.py"
+jetstream3 = "record.py"
+tp6 = "record.py"
+manual = "record.py"
+
+[analyze]
+recurrence = "analyze.py"
+detail = "analyze_detail.py"
+
+[artifacts.detail]
+script = "analyze_detail.py"
+format = "json"
+```
+
+More details can be found in the [Git repository](https://github.com/JustinMeimar/fossil).
+
+> Note: The harness is under continual chrun at the moment, and does not have a stable
+  API. Fork it or vibe something similar yourself!
