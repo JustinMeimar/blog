@@ -1,0 +1,60 @@
+---
+title: "Synesthesia: Verifiable Object Synthesis using Typed Completions"
+publishDate: 2026-09-21
+description: "A terrible Frankenstein monster (?)"
+tags: ["creative-programming", "llm"]
+---
+
+I'm not really sure where to being with this one. First off, let me qualify
+that the presentation of this idea is deliberately extreme, with the hope
+that squeezing it through the filter of articulation may push it to it's
+logical conclusion. It's quite possible this is the most extravagant and
+useless LLM wrapper yet created. It's also quite possible that recursive,
+structured synthesis is precisely what _some domains_[^1] need to utilize
+generative AI reliably. Without beating around the bush any further, let me
+start with a bit of background, then the premise.
+
+## Typed Completions
+
+Sometimes you need the output of an LLM to adhere to a particular structure.
+For this reason OpenAI, among other providers, offer [_Typed
+Completions_](). Behind the scenes, the model is informed of some structure
+an object the generation is meant to be a valid instantiation of. Most
+likely the system prompt is amended to instruct: "produce JSON of this
+structure", which is then parsed and returned to the user. If it fails
+to parse an error is returned to the user. In essence it is a turning a
+generative model output into a `Maybe<T>` monad.
+
+
+```python
+character = {
+    "hair": str
+    "personality": str,
+    "age": int
+}
+res = llm.generate("", type=character)
+if not res.error:   # may fail to produce a 
+ print(res.output) #
+```
+
+_Typed Completions_ were intriguing to me right from their inception around
+2023 since they bekoned towards some heterogenous use of generative and
+classical software: of imperative, deterministic, and otherwise "regular"
+software along side unreliable, potentially slop producing, but also
+sometimes creative and flexible generative models.
+
+> Aside: My friend Seif and I used typed completions for an LLM hackathon in 2023.
+  (The last hackathon I've done, back when they still involved programming.)
+  The event was sponsored by a real-estate company, and we were building a
+  "semantic listing interface", which was a precursor to vector embedding
+  search, which was hot at the time. We were pulling real-estate information
+  from APIs and having a typed completion generate JSON objects with
+  semantic fields like "walkability score (n/10)". Most likely these values
+  were all hallucinated crap, but the typed-completions allowed the generative
+  outputs to hook seemlessly into web-views.
+
+## Pydantic is Pedantic, and all the more Useful for it. 
+
+
+[^1]: A major issue with this work is that it's a solution in search of 
+      a problem, and the problems I've tried are running short.

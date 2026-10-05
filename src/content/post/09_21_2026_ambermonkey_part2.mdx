@@ -1,0 +1,166 @@
+---
+title: "AOT SpiderMonkey Part II: AmberMonkey"
+publishDate: 2026-09-21
+description: "A Transparent AOT Code Generation Backend for SpiderMonkey"
+tags: ["cpp", "jit", "spidermonkey"]
+---
+
+> I wanted to write a short essay, but couldn't muster the energy. So
+  Instead I wrote a long one. - Mark Twain (Find actual quote, this is
+  from memory.)
+
+In the previous post we introduced the problem of [_JIT
+coupling_](https://justinmeimar.com), which intertwines run-time generated
+native code to it's host process. Coupled JIT code occurs somewhat naturally
+given the lifecycle of a JIT. Code generators are invoked at runtime --
+during a live host process -- and therefore often have various host symbols
+in scope. JIT generated code often interfaces with host machinery: handling
+debug and profiling traps, bailing out to the interpreter, querying GC
+state, etc. Directly embedding pointers to such state is therefore entirely
+reasonable. That is, under the assumption that JIT code is intended to be
+_ephemeral_, i.e compiled to run exclusively in a single process then thrown
+away thereafter.
+
+> It is intuitive here to imagine a JIT compiler as an outgrowth from an
+  already existing interpreter. An interpreter manages a collection of
+  private run-time state. A JIT compiler is hacked on-top and must
+  seamlessly transition the guest programs semantics between the interpreter
+  and native code. It is conceivable, then, that emitted native code
+  references run-time state directly.
+
+Also as we mentioned last time, there can be significant redundancy found in
+recompiling the same guest scripts across JavaScript run-times. We started
+with the [Baseline Interpreter](https://justinmeiamr.com) because it is a
+_determinsitic artifact_. Any SpiderMonkey run-time which invokes the JIT
+will invariable compile it's own copy of the _Baseline Interpreter_. Since
+there are many JavaScript runtimes created over the life-cycle of a Browser,
+it formed a natural first target for Ahead-of-Time (AOT) compilation.
+
+
+We can now set our sights beyond the Baseline Interpreter to different
+classes of JIT compilation. However, immediately upon contemplating this, it
+becomes quite clear that guest controlled compilation requires a much more
+intricate scheme for decoupling run-time dependencies. In the SpiderMonkey
+taxonomy there are three primary execution tiers. First, the generic C++
+interpreter. Second, the Baseline interpreter and Inline Cache compilation.
+Second-and-a-half, full [Baseline compilation](). And lastly, Ion optimized
+compilation.
+
+## Ahead-of-Time Ion is Complex, but not Impossible
+
+Lets consider the final tier. Ion is the optimizing compiler for
+SpiderMonkey. It receives type feedback accrued from inline caches from the
+[Warp frontend](), builds an SSA intermediate representation called [MIR](),
+does a whole bunch of optimizations like GVN, LICM, CSE, and, most
+importantly, register allocation. If we could identify a set of guest
+workloads which continually recur across browser workloads, it's possible we
+could pre-compiled some Ion optimized function bodies into the SpiderMonkey
+image. Informing the engine that upon encountering said guest sources,
+warm-up could be skipped and tier directly into an optimized form with zero
+compilation cost minimal installation cost.
+
+There are two engineering challenges which deter us from supporting Ion code
+immediately. The first _challenge_ with Ion code is that some of the
+embedded references do not have a stable, cross-process identity. The
+primary example is that of a [_Shape_](), SpiderMonkeys equivalent to a
+[hidden-class](), or [Map]() in V8 parlance. Effectively it describes the
+run-time type that an object assumes in terms of fixed-slot adn dynamic slot
+layouts, as well as it's prototype structure. The fact that we encounter
+_Shape_ pointers is not surprising. Given that JIT code is defensive,
+incessantly guarding that the state of the world has not updated and
+invalided the assumptions on which it was compiled, seeing guards against
+shapes immediately in native code is expected.
+
+What isn't obvious, however, is that Shapes, being built built up
+procedurally and transitioning into new-shapes when modified, then
+ultimately [HashSconced] within the run-time to give each shape a cannonical
+identity by pointer, _actually have no identity outside of this pointer_.
+Contemplating what an AOT Ion body would look like, we would need to avoid
+embedding the raw pointer itself, and instead reference it's cross-process
+identity. This would involve unrolling a Shape, serializing it, and allow
+it's _contents_ to define it's identity, rather than a _hash-sconced
+pointer_. This is doable, however, as we will see later, the Baseline tier
+will provide a much simpler model for AOT integration which movitates our
+taking of that path.
+
+The second _challenge_ with Ion code is that, unlike the Baseline
+Interpreter, it contains references to GC managed objects. SpiderMonkey uses
+a [Generational Garbage Collector](), which means that heap allocated
+objects may spuriously copy themselves to new locations on the heap during
+a GC cycle. If Ion code embeds a raw pointer to a GC objects in it's
+native code, and, say, that object gets promoted from the [nursery]() to the
+[tenured heap](), then what happens to the native code? Clearly it now
+refers to some allocation which may be garbage.
+
+Harkening back to the illustration of a JIT compiler as a hacked on
+overgrowth surrounding an existing interpreter, the way SpiderMonkey deals
+with movable GC refernences in JIT code is simply by tracking their offsets
+in the assembler buffer and [_patching each offset with the respective new
+address_]() before using it again. The integration of GC semantics into the
+run-time predates the efforts towards JIT compilation, and therefore the JIT
+accommodates to the GC, rather than visa versa. Managing what execution is
+permitted and not permitted during a GC cycle is a critical vein of semantic
+correctness in a JIT, and due effort has been spent ensuring mechanisms to
+[assert when classes of behaviour are valid]().
+
+For AOT compiled Ion code, patching in a valid address once at startup,
+either directly into the code, [Copy-and-Patch]() style, or in a side-table,
+[Embedded builtins style], would need to react to GC events and patch the
+pointers. This is not impossible by any means. It only constitutes a slight
+engineering pain. However, in combination with the _Shape_ identity issue,
+and given the early state of this project, it's complexity sufficient for
+our deterrence.
+
+## The Baseline Tier makes Relocation Simple
+
+The Baseline tier in SpiderMonkey comprises two closely related execution
+states. First is the _Baseline Interpreter_, which is a [threaded-dispatch
+interpreter], used in conjunction with [Inline Caching](). In this mode
+guest bytecode is fed through the Baseline intereter, while polymporhic
+bytecodes recieve on-demand run-time specialization through a preceeding
+Inline Cache lookup.
+
+Heurisitics govern tier transitions in SpiderMonkey. Since the Baseline
+interpreter can handle _arbitrary guest code_, the threshold for guest code
+to tier into it [remains relatively low](). Baseline compilation on the
+other hand represents compile time spent 
+
+- Baseline compilation type generic -> no shape.
+
+- ICs access shapes parametrically, storing them in data -> no shape
+
+- No GC pointers
+
+- Lets just do Baseline then, it's still good performance.
+
+- Baseline is also simpler from a security POV.
+
+## AmberMonkey
+
+- RIT
+
+- Image format.
+
+- Recording and Loading process.
+
+- Bailouts, lookup misses, hardening and fingerprinting.
+
+    - Spectre Mitigations.
+
+- More details that couldn't make it in the paper.
+
+
+## Performance
+
+- AmberMonkey speedup plot
+
+- Relative performance
+
+- Indirection overhead?
+
+- Memory
+
+## What's Next
+
+
+
