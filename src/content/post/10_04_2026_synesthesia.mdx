@@ -1,18 +1,18 @@
 ---
 title: "Synesthesia: Verifiable Object Synthesis using Typed Completions"
 publishDate: 2026-09-21
-description: "A terrible Frankenstein monster (?)"
+description: "Combining Crystal and Tar"
 tags: ["creative-programming", "llm"]
 ---
 
 I'm not really sure where to being with this one. First off, let me qualify
-that the presentation of this idea is deliberately extreme, with the hope
-that squeezing it through the filter of articulation may push it to it's
-logical conclusion. It's quite possible this is the most extravagant and
-useless LLM wrapper yet created. It's also quite possible that recursive,
-structured synthesis is precisely what _some domains_[^1] need to utilize
-generative AI reliably. Without beating around the bush any further, let me
-start with a bit of background, then the premise.
+that the presentation of this idea is deliberately biased. The hope is that
+squeezing it through the filter of articulation may push it to it's logical
+conclusion. It's quite possible this is the most extravagant and useless LLM
+wrapper yet created. It's also quite possible that recursive, structured
+synthesis is precisely what _some domains_[^1] need to utilize generative AI
+reliably. Without beating around the bush any further, let me start with a
+bit of background, then the premise.
 
 ## Typed Completions
 
@@ -32,9 +32,9 @@ character = {
     "personality": str,
     "age": int
 }
-res = llm.generate("", type=character)
-if not res.error:   # may fail to produce a 
- print(res.output) #
+res = llm.generate("My favourite Byronic Hero", type=character)
+if not res.error:   # may fail to produce a character 
+ print(res.output)  # here is guaranteed to be syntactically correct
 ```
 
 _Typed Completions_ were intriguing to me right from their inception around
@@ -43,17 +43,83 @@ classical software: of imperative, deterministic, and otherwise "regular"
 software along side unreliable, potentially slop producing, but also
 sometimes creative and flexible generative models.
 
-> Aside: My friend Seif and I used typed completions for an LLM hackathon in 2023.
-  (The last hackathon I've done, back when they still involved programming.)
-  The event was sponsored by a real-estate company, and we were building a
-  "semantic listing interface", which was a precursor to vector embedding
-  search, which was hot at the time. We were pulling real-estate information
-  from APIs and having a typed completion generate JSON objects with
-  semantic fields like "walkability score (n/10)". Most likely these values
-  were all hallucinated crap, but the typed-completions allowed the generative
-  outputs to hook seemlessly into web-views.
+> Aside: My friend Seif and I used typed completions for an LLM hackathon in
+> 2023. (The last hackathon I've done, back when they still involved
+> programming.) The event was sponsored by a real-estate company, and we
+> were building a "semantic listing interface", which was a precursor to
+> vector embedding searches that were hot at the time. We were pulling
+> real-estate information from APIs and having a typed completion generate
+> JSON objects with semantic fields like "walkability score (n/10)". Most
+> likely these values were all hallucinated crap, but the typed-completions
+> allowed the generative outputs to hook seemlessly into web-views.
 
-## Pydantic is Pedantic, and all the more Useful for it. 
+## The Preimse: Using Pydantic to be Pedantic
+
+What is most convenient about _Typed Completions_ is that they can be
+derived from any Python object which inherits from the [`pydantic`]()
+package's `BaseModel` class. These classes can be composed, allowing for the
+generation of nested structures. Any primitive type, like `string` or `int`,
+is type-checked by the API, along with user types which de-sugar (this is imprecise) into
+primitive types, like a `StrEnum`.
+
+```python
+from pydantic import BaseModel
+
+class Ability(Enum):
+    Fly,
+    Clone,
+    Explode,
+
+@dataclass
+class Character(BaseModel):
+    name: str
+    backstory: str
+    abilities: List[Ability]
+   
+    @classmethod
+    def generate(cls, *args):
+        return self.model.complete(prompt=f"""
+            Create a character for a fantasy game from this users description: {}.
+            The name must comprise a first and last name. A character must have
+            no more than two abilities, and can not simeltaneously fly and explode.
+        """.format(*args), type=cls)
+
+    def validate(self):
+        assert len(self.name.split(' ')) == 2 # first and last
+        assert len(self.abilities) <= 2 # not more than two
+        assert not ("Explode" in  self.abilities and \
+                    "Fly" in self.abilities)
+
+c1 = Character("A Villain from a Volcano") # will likely select explode...
+c2 = Character("Someone like Princess Peach.")
+```
+
+The example above shows a character creation pipeline. The generation for
+each class is fed itself as the type parameter, then uses a generation
+prompt, parameterized by some user specification, to seed the values.
+Essentially an instance of a class can be created with it's fields values
+being _generated_ rather than _assigned_. Because each class retains regular
+Python semantics, a _validation_ method can be automatically invoked after
+each generation to assert more stringent properties beyond syntactically
+valid JSON.
+
+Contemplating what more elaborate hierarchical structures look like, it is
+clear that we are building large, acyclic graphs (Trees) via composition of
+Python objects which can be "generated". We will need some algorithm for
+traversing this graph and invoking the generations. Here is where it gets
+tricky. In what order to generate the graph? From a strict computer science
+approach, we should generate a node any time it's producer nodes are ready.
+But the semantics (should I dare use that word) of this synthesis are more
+sensitive. Consider the case of a book.
+
+## Synesthesia
+
+The name _Synesthesia_ is meant to emphasize, like the blending of human
+senses, that two different modalities of computation -- deterministic and
+generative -- can be interact in one coherent system. It does so in the
+following way:
+
+- 
 
 
 [^1]: A major issue with this work is that it's a solution in search of 
