@@ -13,32 +13,35 @@ import BlogImage from '../../components/BlogImage.astro';
   _scale horizontally_ with AI agents that have a propensity to spew
   code like a broken fire hydrant. 
 
-A research harness organizes the measurement of software, including
-experiments, analyses, and figures. A final draft scarcely arises from a
-linear sequence of keystrokes. Rather, research is produced from a
-circuitous loop of insights, unforeseen results, experimental redesigns, and
-an ever-long tail of tweaks. A good research harness, therefore, should
-reduce the friction of iterative research. Specifically, a harness should,
-by construction, enforce experiments to be reproducible and easy to modify.
-Additionally, the artifacts an experiment emits should be traceable in terms
-of when it ran, the configuration of the system and code at the time, it's
-inputs, and it's outputs.
 
-With this in mind, we are motivated to view the entire research process
-from an software design lens. A research endeavor may span months, or even
-years. It attains that degree of reuse which justifies migrating from a
-collection of ragged scripts to a well-thought-out tool. There was, at
-least in my case this summer writing my first paper, a lot of unnecessary
-re-doing of work caused by poor organization. This post describes some of the
-principles I've distilled and implemented into a custom harness. We will
-start at the top, seeing how the harness is used to auto-update a paper
-draft whenever experiments re-run, then peek into the architecture that
-drives it.
+A research harness organizes the measurement of software. This includes
+running experiments, analyzing data, and generating figures. Papers hardly
+arises from a linear sequence of keystrokes. An ergonomic harness aims to
+reduce the friction of the continuous iteration, backtracking and pivoting
+involved in research.
+
+A project may span months, or even years -- a duration long enough to
+justify migrating from a collection of ragged scripts to a well-thought-out
+tool. Experiments will change, analyses will be adjusted, and figures will
+be swapped. A harness should make all these changes well defined. It should,
+by construction, enforce experiments to be reproducible, versioned, and
+produce artifacts with clear provenance.
+
+The alternative is... well you may have experienced it already. A result,
+even if it's excellent, is junk if it's provenence has been lost. The goal
+is to avoid ever asking: "Where did this result come from?", "How did I run
+this experiment last time?", or, the worst of them all, "Which of these
+results is the right one?".
+
+With this deplorable circumstance in mind, we are motivated to view the
+entire research process from an software design lens. The harness described
+in this post is distilled from experiences writing my first paper this
+summer, and possibly finding myself in the situations mentioned above.
+
+### The Paper _is_ the Program 
 
 > Throughout this post I use [Typst](https://typst.app/docs/), a dual
   type-setting and scripting language. The syntax should be intuitive.
-
-### The Paper _is_ the Program 
 
 In programming, an old adage goes on about "not repeating oneself."
 Duplicate sources of truth ripen the area for programmer induced errors.
@@ -60,18 +63,17 @@ the DNA repair efficiency improving by 60% over the controlled population.
 Ignoring whether this biology jargon is coherent, the issue of duplicated
 metrics is clear. After re-running an experiment, every occurrence of `60%`
 must be updated manually. If the experimental design changes, same goes for
-`n=12`. When pursuing performance results, writing is typically interleaved
-with improvements to the software being measured. Without abstracting repeated
-metrics into variables, one must vigilantly update every occurrence
-independently. Even if you (or more likely your terminally online robot
-friend) are shrewd enough keep every metric updated, it is manual work
-nonetheless. Why not automate it?
+`n=12`. Without abstracting repeated metrics into variables, one must
+vigilantly update every occurrence independently. Even if you (or more
+likely your terminally online robot friend) are shrewd enough keep every
+metric updated, it is manual work nonetheless. Why not automate it?
 
 Keeping experimental parameters in _variables_ is an admittedly quite basic,
-but necessary step towards our goal. On it's own, this is merely the
+but necessary step towards our goal of a well-oiled research harness. On
+it's own, this is merely the
 [DRY](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself) principle.
-Simple as it may be, variables will become the fulcrum from which an
-auto-updating research draft derives it's leverage. That leaves us with the
+Simple as it may be, variables will become the interface from which the
+harness delivers experimental updates automatically. That leaves us with the
 first princple: _No magic numbers in Prose_.
 
 ```typst
@@ -86,22 +88,18 @@ A normalized experiment using a sample population of #sample-size resulting in
 the DNA repair efficiency improving by #repair-efficiency over the controlled population.
 ```
 
-### Research Harness Outputs Can Indirectly Update the Draft 
+### A Common IR for Experimental Results 
 
-
-By using variables for metrics `N` sources of repetition receive a single
-definition. The manual work is reduced to running the experiment, then
-assigning the produced values to their respective definitions in Typst. Many
-would say this is good enough. But as a true programmer, I am lazy. Notice
-that the research harness continually observes the latest results. Why not
-inform the harness of our draft, having _it_ update the paper? Herein lies
-the utility of _Typst as a programming language_. The harness will be setup
-to write the artifacts from an experiment, while Typst project reads them
-in. JSON tables will effectively become an intermediate representation. As
-an invariant, experiments will emit their results in a table structure. Some
-Typst functions will allow reading arbitrary rows, fields and columns from
-said structure. To illustrate, suppose the harness emits tables shaped like
-so:
+Some may say assigning variables once, within the draft, is good enough.
+But as a true programmer, I am lazy. Notice that the research harness
+continually observes the latest results. Why not inform the harness of our
+draft, having _it_ update the paper? Herein lies the utility of _Typst as a
+programming language_. The harness will be setup to write the artifacts from
+an experiment, while Typst project reads them in. JSON tables will
+effectively become an intermediate representation. As an invariant,
+experiments will emit their results in a table structure. Some Typst
+functions will allow reading arbitrary rows, fields and columns from said
+structure. To illustrate, suppose the harness emits tables shaped like so:
 
 
 ```json
@@ -155,18 +153,16 @@ Version B achieves a geometric mean speedup of #version-b-speedup×
 over the baseline.
 ```
 
+JSON tables of this form impose a constraint on how our harness emits
+results. Of course, for forms which escape the rigidity of a table,
+arbitrary figures can be generated. But otherwise, this JSON table will
+become the representation mediating our draft and harness. If we are using a
+command like `typst watch`, which incrementally re-compiles our paper live,
+we can even observe our draft update in real time once an experiment
+completes. Pretty cool!
+
 ### Fossil -- The Research Harness
 
-We can see that, assuming our experimental outputs are emitted in a
-particular form, and we have a small portion of Typst code to consume it,
-synchronizing our experiments to the draft is actually quite simple.
-Experimental results are be emitted to a file adjacent to the draft. Each
-variable in the paper references it's value by keying the respective table,
-rather than assigning the value directly. In other words, we introduced an
-indirection to decouple the identity of a value from it's actual value. If
-we are using a command like `typst watch`, which incrementally re-compiles
-our paper live, we can even observe our draft update in real time once an
-experiment completes. Pretty cool!
 
 <BlogImage
   src="/images/typst-research-hanress/decoupled-typst.svg"
@@ -176,33 +172,48 @@ experiment completes. Pretty cool!
 
 We can now divert to the design of the harness itself: Fossil. The name is
 meant to evoke the imagery of uncovering a long buried fossil. In our case,
-it is likely a research artifact from many months ago. Continuing the
-analogy, if this fossil was buried in pristine condition, then we can
-confidently restore it's utility. On the other hand, if it was buried in
-some catastrophe, then upon digging it up we find ourselves at a loss for
-what exactly we are looking at. Breaking the analogy briefly, this describes
-the circumstance we have all found ourselves in, trying to resuscitate a
-result, only to find some ambigiously named `results.json` file. What
-species it this creature, or is it merely some funnily shaped petrified
-wood? With a research harness, we should be _certain_ this fossil was buried
-at. This leads to the second principle: _all artifacts have clear
-provenance._
+it is likely a research artifact from many months ago.
 
-Beneath these grand aspirations, a harness is really just a command
-wrapper. It provides indirection for invoking scripts, combing otherwise
-ragged scripts through a unified interface. Doing so avoids a hairball of
-unorganized scripts, which is a particularly accessible outcome given the
-willingness of AI agents to spay code everywhere. We essentially want
-structured boundaries in which agent written scripts can proliferate en-mass
-in an organized, horizontally scalable fashion, while being structurally
-constrained to assume one role -- do one particular job well -- by
-subscribing to defined interfaces.
+To elaborate on the analogy, suppose this fossil was buried in pristine
+condition. It follows we can confidently dig it up and reason about it. On
+the other hand, if it was buried in some catastrophe, then upon digging it
+up we find ourselves at a loss for what exactly we are looking at.
 
-The distinct script "roles" partition responsibility. There are three
-classes in Fossil: running experiments, analyzing outputs, and producing
-structured artifacts such as tables or plots. By separating scripts into
-distinct roles, iterating on the research project holistically will become
-much cheaper.
+This forms our previously mentioned "deplorable" research circumstance.
+Finding a seemingly great result, only it exists inside an ambigiously named
+`results.json` file. What species it this `results.json` creature? Is it
+even a organism at all, or merely some funnily shaped petrified wood? With a
+research harness, we should be _certain_ this fossil was buried at. This
+leads to the second principle: _all artifacts have clear provenance._
+
+### Distinct Roles of Scripts
+
+The heart of fossil is three distinct script roles: running experiments,
+analyzing outputs, and producing structured artifact. Orthogonal-izing
+these roles allows the research project to scale much more effectively.
+
+First, a runner invokes the program under study, collects its outputs, the
+state of the machine, exit status, and anything else that is irrespective of
+the contents of the output. A run produces a record: an unstructured file
+comprising the runs output and meta-data. 
+
+The second class is an analysis script. An analyzer takes the verbose,
+unstructured outputs of a run and produces a neat JSON file. Sometimes it
+will emit the typst-readable JSON table immediately, other times it will be
+more bespoke. The analysis is trivially repeatable. A pure function over a
+record, producing the same results each time. Separating a run from a record
+allows a many-to-many relation between records (perahps three records run
+under different experimental conditions) and analyses (suppose wall-clock time,
+and output score).
+
+The third class is for artifact scripts. These produce either PDF figures
+for the paper, or JSON tables to be referenced indirectly. Like the run and
+analysis separation, decoupling the artifact script allows various
+presentations of the same data. I have often pointed an agent at some
+analysis output and asked it to "create several interesting plots which tell
+the story of this data". Another benefit of decoupling, of course, is when
+the run and analysis are expensive. There is no reason for a plotting script
+to wait around for an anlaysis to re-compute.
 
 <BlogImage
   src="/images/typst-research-hanress/lifecycle.svg"
@@ -210,19 +221,42 @@ much cheaper.
   darkMode="invert"
 />
 
+The roles each build on-top of the previous. Other than that, Fossil merely
+provides indirection for invoking scripts through common cli commands:
+`fossil run`, `fossil analyze` and `fossil artifact`. By combing otherwise
+ragged scripts through a unified interface, we avoid a hairball of
+unorganized scripts. This outcome is particularly accessible outcome given
+the willingness of AI agents to spay code everywhere. If agents are writing
+scripts, at least the complexity is confined to its role.
+
+
+This scratches at what I think is a design principle for programs that are
+heavily used by agents. Structured boundaries allow agent written code can
+proliferate en-mass, but in an organized, horizontally scalable fashion. No
+matter how crazy the agent gets, a script is constrained to assume do one
+particular job, and do it well.
+
+### Variants
+
+Variants are the last key aspect of the harness. They define distinct
+configuration in which a runner script will be called. For example, variants
+for a compiler benchmarking experiment may be: `{-O1, -O2, -O3}`, describing
+three different optimization levels. A record produced by a run is tagged
+with it's variant. There is not much more too it. Variants are a simple
+and essential aspect of a harness.
+
 ### The Fossil API
 
-A research project recieves it's own `project.toml`. Experiments live in
-adjacent directories, each containing their own `fossil.toml` where
-experiment variants, runner scripts, analysis scripts and derivation scripts
-live. I typically prefix my experiments with the section of the paper their
-results are emitted into.
+Most of the implementation details can be found in the [Git
+repository](https://github.com/JustinMeimar/fossil). A research project
+recieves it's own `project.toml`. Experiments live in adjacent directories,
+each containing their own `fossil.toml` where experiment variants, runner
+scripts, analysis scripts and artifact scripts live. I typically prefix my
+experiments with the section of the paper their results are emitted into.
 
 ```
 Aug 17 10:07 0-0-static-tables
 Aug 20 19:58 3-3-inter-workload
-Aug 17 16:07 6-1-corpus-construction
-Aug 17 10:08 7-1-corpus-coverage
 Aug 24 10:32 7-2-ambermonkey-perf
 Aug 17 10:24 7-4-indirection-overhead
 Aug 23 10:15 7-5-cross-process-memory-sharing
@@ -252,7 +286,16 @@ script = "analyze_detail.py"
 format = "json"
 ```
 
-More details can be found in the [Git repository](https://github.com/JustinMeimar/fossil).
+Experiments can be invoked from the CLI via `fossil bury <experiment> --variants <variants>`. I've also played around with a TUI and a web-view from which records
+can be viewed, experiments can be kicked off, and figures can be generated.
 
-> Note: The harness is under continual chrun at the moment, and does not have a stable
-  API. Fork it or vibe something similar yourself!
+### Leaving it to You Now
+
+I've focused on the principle aspects of a research harness, and remained
+deliberately skimpy on the details of `fossil` for a reason. Building a
+harness is fun and relatively cheap with agents. Additionally, a harness
+should be custom-tailored. The age of single user software is here, and it
+is a great time. I hope this post has inspired the design of your ownc
+custom research harness!
+
+
