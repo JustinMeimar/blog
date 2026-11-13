@@ -82,7 +82,7 @@ const showToc = headings.length > 3;
     <div class={showToc ? 'lg:grid lg:grid-cols-[1fr_220px] lg:gap-12' : ''}>
     <article class="animate-fade-up stagger-1 max-w-3xl" data-pagefind-body>
       <!-- Post header -->
-      <header class="mb-12" data-pagefind-ignore>
+      <header class="mb-8" data-pagefind-ignore>
         <div class="flex items-baseline gap-4 mb-4 font-mono text-xs text-[var(--text-muted)]">
           <time datetime={publishDate.toISOString()}>
             {formatDate(publishDate)}
@@ -130,7 +130,7 @@ const showToc = headings.length > 3;
       </header>
 
       <!-- Divider -->
-      <div class="mb-12 h-px bg-[var(--border)]"></div>
+      <div class="mb-8 h-px bg-[var(--border)]"></div>
 
       <!-- Post content -->
       <div class="prose">
@@ -138,8 +138,8 @@ const showToc = headings.length > 3;
       </div>
 
       <!-- Post footer -->
-      <footer class="mt-16" data-pagefind-ignore>
-        <div class="h-px bg-[var(--border)] mb-12"></div>
+      <footer class="mt-10" data-pagefind-ignore>
+        <div class="h-px bg-[var(--border)] mb-8"></div>
 
         <!-- Back to posts -->
         <a

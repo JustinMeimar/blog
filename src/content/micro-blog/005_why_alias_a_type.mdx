@@ -1,0 +1,41 @@
+---
+title: "Why Alias a Type"
+publishDate: 2026-11-13
+description: "Steering Claude towards better C++ Design"
+tags: []
+draft: true
+---
+
+Pruning through a codebase like SpiderMonkey you will find copious type
+aliases. For instance [`typedef uint8_t jsbytecode`][1]. Or
+[`typedef unsigned char Latin1Char`][2]. Intuitively this is good
+software architecture, but I recently hand to articulate why so that my
+little friend Claude would stop spewing raw `int`s all over my
+implementations. Here is what I told Claude:
+
+> Mature C++ projects start to read like a custom dialects/DSL through the use of well-named type
+> aliases. For instance, Clang will [alias an unsigned integer to `BlockID`][3].
+> While these are [purely syntactic substitutions][4], they are useful for
+> reading and writing code.
+>
+> Well named type alises increase signal when reading code. 
+> It is immediately clear what `BlockID i=0`
+> refers to, where as for `unsigned i=0` I may guess as an index (from a large prior
+> of seeing index loops), but I will not know the full context. Type aliases may 
+> also shorten nested compound types, like `std::vector<std::tuple<int,int>>`.
+> Better to use `MyVector<Coordinate>`.
+>
+> Type aliases also have utility beyond lowering the perplexity for readers.
+  They establish an extremely prudent
+> refactoring boundary. What happens if, one day, we need to add some more
+> semantics to `BlockID`? Suppsoe we need to elevate it's function into a
+  `struct`. We
+> can use refactoring tools to find and change every occurence of
+> `BlockID` in our project. If it is merely an unsigned integer, we will hit the
+> superset of all `unsigned` types in our program. Not good.
+
+[1]: https://searchfox.org/firefox-main/rev/00aad09a820405643aebd693e60a3333ccf04544/js/public/TypeDecls.h#24
+[2]: https://searchfox.org/firefox-main/rev/00aad09a820405643aebd693e60a3333ccf04544/js/public/TypeDecls.h#47
+[3]: https://clang.llvm.org/doxygen/WorkList_8cpp_source.html#l00139
+[4]: https://eel.is/c++draft/dcl.typedef#1
+[5]: https://clangd.llvm.org/features.html#rename

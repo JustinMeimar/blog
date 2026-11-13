@@ -5,12 +5,13 @@ import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
 import expressiveCode from "astro-expressive-code";
 import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
-import { pluginLanguageLabel } from "./src/plugins/expressive-code-language-label";
-import pagefind from "astro-pagefind";
+import { pluginLanguageLabel } from "./src/plugins/expressive-code-language-label.mjs";
 import { remarkReadingTime } from "./remark-reading-time.mjs";
 import { remarkResolveLinks } from "./remark-resolve-links.mjs";
 import rehypeExternalLinks from "rehype-external-links";
 import react from "@astrojs/react";
+
+const isDev = process.argv.includes("dev");
 
 // https://astro.build/config
 export default defineConfig({
@@ -52,9 +53,16 @@ export default defineConfig({
     }),
     mdx(),
     sitemap(),
-    ...(process.argv.includes("dev") ? [] : [pagefind()]),
   ],
   vite: {
+    // Builds must not replace the running dev server's optimized dependencies.
+    cacheDir: isDev ? "node_modules/.vite-dev" : "node_modules/.vite-build",
+    server: {
+      watch: {
+        // direnv's profile symlinks lead into the Nix store, not site source.
+        ignored: ["**/.direnv/**"],
+      },
+    },
     plugins: [tailwindcss()],
     optimizeDeps: {
       exclude: ["@resvg/resvg-js"],

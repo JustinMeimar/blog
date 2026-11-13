@@ -1,5 +1,4 @@
 ---
-import { render } from "astro:content";
 import Base from "../../layouts/Base.astro";
 import Header from "../../components/Header.astro";
 import Footer from "../../components/Footer.astro";
@@ -7,35 +6,26 @@ import PostPreview from "../../components/PostPreview.astro";
 import { getAllPosts } from "../../utils/posts";
 
 const posts = await getAllPosts();
-const postsWithReadingTime = await Promise.all(
-  posts.map(async (post) => {
-    const { remarkPluginFrontmatter } = await render(post);
-    return {
-      ...post,
-      minutesRead: remarkPluginFrontmatter.minutesRead,
-    };
-  })
-);
 ---
 
 <Base title="Writing | justinmeimar — Justin Meimar" description="Technical writing by Justin Meimar.">
   <div class="max-w-2xl mx-auto px-6 py-12 md:py-20 topo-mask">
-    <Header activeSection="writing" />
+    <Header activeSection="writing" compactSpacing />
     
-    <div class="mb-8 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
+    <div class="mb-4 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
 
     <section class="animate-fade-up stagger-2">
       {
-        postsWithReadingTime.length > 0 ? (
-          <div class="space-y-8">
-            {postsWithReadingTime.map((post, i) => (
+        posts.length > 0 ? (
+          <div class="space-y-1">
+            {posts.map((post, i) => (
               <PostPreview
                 title={post.data.title}
                 description={post.data.description}
                 publishDate={post.data.publishDate}
                 slug={post.id}
-                readingTime={post.minutesRead}
                 index={i}
+                listLayout
               />
             ))}
           </div>
@@ -47,7 +37,7 @@ const postsWithReadingTime = await Promise.all(
       }
     </section>
 
-    <div class="mt-20">
+    <div class="mt-10">
       <Footer />
     </div>
   </div>

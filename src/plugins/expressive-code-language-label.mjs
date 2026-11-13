@@ -2,7 +2,8 @@ import { definePlugin } from "@expressive-code/core";
 import { h } from "@expressive-code/core/hast";
 
 // Language display names for common languages
-const languageNames: Record<string, string> = {
+/** @type {Record<string, string>} */
+const languageNames = {
   js: "JavaScript",
   javascript: "JavaScript",
   ts: "TypeScript",
@@ -56,7 +57,8 @@ const languageNames: Record<string, string> = {
   sol: "Solidity",
 };
 
-function getLanguageDisplayName(language: string): string {
+/** @param {string} language */
+function getLanguageDisplayName(language) {
   return languageNames[language.toLowerCase()] || language.toUpperCase();
 }
 

@@ -29,6 +29,7 @@ const project = defineCollection({
   schema: ({ image }) =>
     z.object({
       name: z.string(),
+      emoji: z.string().optional(),
       description: z.string(),
       coverImage: z.object({
         src: image(),

@@ -53,13 +53,13 @@ const totalCount = posts.length + microblogs.length;
       <h1 class="font-serif text-3xl md:text-4xl font-normal tracking-tight mb-4">
         <span class="text-[var(--text-muted)]">#</span>{tag}
       </h1>
-      <p class="font-serif text-lg text-[var(--text-muted)] leading-relaxed mb-12">
+      <p class="font-serif text-lg text-[var(--text-muted)] leading-relaxed mb-8">
         {totalCount} {totalCount === 1 ? "item" : "items"} tagged with #{tag}
       </p>
     </section>
 
     <!-- Divider -->
-    <div class="mb-12 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
+    <div class="mb-8 h-px bg-[var(--border)] animate-fade-in stagger-2"></div>
 
     <section class="animate-fade-up stagger-2">
       {/* Posts Section */}
@@ -89,17 +89,14 @@ const totalCount = posts.length + microblogs.length;
           <h2 class="font-mono text-xs tracking-widest uppercase text-[var(--text-faint)] mb-6">
             Micro-blog ({microblogs.length})
           </h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-1">
             {microblogs.map((entry, i) => (
               <MicroblogPreview
                 title={entry.data.title}
                 description={entry.data.description}
                 publishDate={entry.data.publishDate}
                 slug={entry.id}
-                tags={entry.data.tags}
                 index={i}
-                heightClass="h-40"
-                content={entry.body}
               />
             ))}
           </div>
@@ -114,7 +111,7 @@ const totalCount = posts.length + microblogs.length;
       )}
     </section>
 
-    <div class="mt-20">
+    <div class="mt-10">
       <Footer />
     </div>
   </div>

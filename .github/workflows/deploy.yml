@@ -24,18 +24,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+          node-version-file: ".nvmrc"
+          cache: "npm"
 
       - name: Install dependencies
-        run: bun install
+        run: npm ci
+
+      - name: Verify content refresh
+        run: npm run test:dev
 
       - name: Build with Astro
-        run: bun run build
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

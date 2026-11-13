@@ -54,8 +54,8 @@
   --color-bg-paper-dark: #211e1b;
   --color-text-dark: #e7e5e4;
   --color-text-muted-dark: #d6d3d1;
-  --color-text-faint-dark: #57534e;
-  --color-border-dark: #292524;
+  --color-text-faint-dark: #a8a29e;
+  --color-border-dark: #57534e;
   --color-accent-dark: #a8a29e;
 
   /* Animation */
@@ -291,14 +291,14 @@ body::before {
 
 /* Blockquotes */
 .prose blockquote {
-  font-style: italic;
+  font-style: normal;
   color: var(--text-muted);
   border-left: 2px solid var(--border);
   padding-left: 1.5em;
   margin: 2em 0;
 }
 
-.prose blockquote p {
+.prose blockquote p:last-child {
   margin-bottom: 0;
 }
 
@@ -310,6 +310,19 @@ body::before {
   background-color: var(--bg-paper);
   padding: 0.2em 0.4em;
   border-radius: 3px;
+}
+
+/* Keep link affordances visible above the inline code background. */
+.prose a code {
+  color: var(--link-color);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.prose a:hover code,
+.prose a:focus-visible code {
+  text-decoration-thickness: 2px;
 }
 
 /* Code blocks */
@@ -423,7 +436,7 @@ body::before {
   border: none;
   height: 1px;
   background-color: var(--border);
-  margin: 3em 0;
+  margin: 2em 0;
 }
 
 /* Strong */

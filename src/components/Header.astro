@@ -4,9 +4,10 @@ import Search from "./Search.astro";
 
 interface Props {
   activeSection?: string;
+  compactSpacing?: boolean;
 }
 
-const { activeSection = "home" } = Astro.props;
+const { activeSection = "home", compactSpacing = false } = Astro.props;
 
 const navItems = [
   { href: "/", label: "home" },
@@ -17,7 +18,7 @@ const navItems = [
 ];
 ---
 
-<header class="mb-8 md:mb-12" data-pagefind-ignore transition:animate="none">
+<header class={compactSpacing ? "mb-6" : "mb-8 md:mb-12"} data-pagefind-ignore transition:animate="none">
   <div class="flex items-start justify-between">
     <div>
       <a href="/" class="group flex items-center gap-3">

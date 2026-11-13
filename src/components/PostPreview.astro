@@ -9,21 +9,39 @@ interface Props {
   readingTime?: string;
   index?: number;
   compact?: boolean;
+  listLayout?: boolean;
 }
 
-const { title, description, publishDate, slug, readingTime, index = 0, compact = false } = Astro.props;
+const { title, description, publishDate, slug, readingTime, index = 0, compact = false, listLayout = false } = Astro.props;
 ---
 
 <article
   class:list={[
-    "group cursor-pointer hover-lift px-4 -mx-4 rounded transition-colors duration-300",
-    compact ? "py-2" : "py-4",
+    "group cursor-pointer px-4 -mx-4 rounded transition-colors duration-300",
+    !listLayout && "hover-lift",
+    compact || listLayout ? "py-2" : "py-4",
     "hover:bg-[var(--bg-paper)]",
     "animate-fade-up",
     `stagger-${Math.min(index + 3, 6)}`,
   ]}
 >
   <a href={`/posts/${slug}`} class="block">
+    {listLayout ? (
+      <>
+        <div class="flex items-baseline justify-between gap-4">
+          <h3 class="min-w-0 font-serif text-[15px] leading-5 group-hover:underline decoration-1 underline-offset-4 decoration-[var(--link-color)]">
+            {title}
+          </h3>
+          <time datetime={publishDate.toISOString()} class="shrink-0 font-mono text-[11px] leading-4 text-[var(--text-faint)] tabular-nums">
+            {formatDate(publishDate)}
+          </time>
+        </div>
+        <p class="font-serif text-[13px] leading-5 text-[var(--text-muted)] mt-0.5">
+          {description}
+        </p>
+      </>
+    ) : (
+      <>
     <div class="flex items-baseline gap-4 mb-2">
       <time class="font-mono text-xs text-[var(--text-muted)]">
         {formatDate(publishDate)}
@@ -41,5 +59,7 @@ const { title, description, publishDate, slug, readingTime, index = 0, compact =
     <p class="font-serif text-sm text-stone-500">
       {description}
     </p>
+      </>
+    )}
   </a>
 </article>
