@@ -44,6 +44,8 @@ interface Props {
   darkMode?: 'invert' | 'border';
   size?: 'small' | 'medium' | 'full';
   class?: string;
+  /** Set false to disable the enlargement control. */
+  zoomable?: boolean;
 }
 
 const {
@@ -54,7 +56,8 @@ const {
   float,
   darkMode,
   size,
-  class: className = ''
+  class: className = '',
+  zoomable = true
 } = Astro.props;
 
 const floatClass = float ? `float-${float}` : '';
@@ -64,27 +67,31 @@ const darkModeAttr = darkMode ? `data-theme-adapt="${darkMode}"` : '';
 const baseClasses = [floatClass, sizeClass, className].filter(Boolean).join(' ');
 ---
 
-{caption ? (
-  <figure class={baseClasses}>
-    {darkSrc ? (
-      <>
-        <img src={src} alt={alt} data-theme="light-only" {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
-        <img src={darkSrc} alt={alt} data-theme="dark-only" />
-      </>
-    ) : (
-      <img src={src} alt={alt} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
-    )}
-    <figcaption>{caption}</figcaption>
-  </figure>
-) : (
-  <>
-    {darkSrc ? (
-      <>
-        <img src={src} alt={alt} data-theme="light-only" class={baseClasses} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
-        <img src={darkSrc} alt={alt} data-theme="dark-only" class={baseClasses} />
-      </>
-    ) : (
-      <img src={src} alt={alt} class={baseClasses} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
-    )}
-  </>
-)}
+<figure class={baseClasses} data-image-lightbox={zoomable ? "" : undefined}>
+  <div data-image-lightbox-media>
+    <img src={src} alt={alt} data-theme={darkSrc ? "light-only" : undefined} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
+    {darkSrc && <img src={darkSrc} alt={alt} data-theme="dark-only" />}
+  </div>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<script>
+  import { initImageLightboxes } from '../lib/imageLightbox';
+
+  let cleanup: (() => void) | undefined;
+  function init() {
+    cleanup?.();
+    cleanup = initImageLightboxes();
+  }
+  init();
+  document.addEventListener('astro:page-load', init);
+  document.addEventListener('astro:before-swap', () => {
+    cleanup?.();
+    cleanup = undefined;
+  });
+</script>
+
+<style>
+  /* Keep the existing article image sizing inside the control wrapper. */
+  figure.img-full img { width: 100%; max-width: 100%; }
+</style>

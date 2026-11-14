@@ -5,38 +5,53 @@ description: "A Transparent AOT Code Generation Backend for SpiderMonkey"
 tags: ["cpp", "jit", "spidermonkey"]
 ---
 
+import BlogImage from "../../components/BlogImage.astro";
+
 > At first glance, reusing JIT code in a production JavaScript engine
 > appears a hopeless prospect. JIT code is specialized guest code, and
 > guest code has extremely diffuse recurrence in a browser setting. Or does
 > it? 
 
 It's been roughly nine months since reusable JIT code for SpiderMonkey was
-introduced in [part one](). Back then we set our aims on the Baseline
+introduced in [part one][part-one]. Back then we set our aims on the Baseline
 Interpreter, a run-time generated JIT artifact which had the prospect to be
 provided at compile time through bootstrapping. The impediment to reuse came
 from any run-time address being embedded into the JIT code directly. This
-"host" or "jit-code-coupling" is natrual, and even efficient, under the
-assumption that JIT code need not outlive it's host process. To address
+"host" or "jit-code-coupling" is natural, and even efficient, under the
+assumption that JIT code need not outlive its host process. To address
 this, we considered two relocation models: direct code patching and
 indirection through a side table. Since one anticipated use of AOT JIT code
 is to improve code sharing, we went with indirection, since patching
 necessitates private copies of each artifact. With indirection our AOT
 artifacts can remain in immutable, sharable pages.
 
+{/* Editor:
+Paper §5.2 qualifies immutability: normal execution shares code, but debugging/profiling
+can patch interpreter instructions and create private copies. Mention this when
+discussing sharing or limitations.
+*/}
+
 Since then the project has grown and culminated into a paper accepted to CGO
-2027 in March. Pickup up where we left off, we'll explore expanding the
+2027 in March. Picking up where we left off, we'll explore expanding the
 classes of JIT artifacts we can provide AOT. There are a few intertwined
 motivations for this. Foremost is recovering performance under security
 restricted execution settings. JIT compilers represent a point
 up-and-to-the-right of a complexity-performance trade off. Production grade
-engines acheive near native speeds of execution in steady states, but are
-also an immense engineering effort. [Dynamic executable memory]() (treating
+engines achieve near native speeds of execution in steady states, but are
+also an immense engineering effort. [Dynamic executable memory][v8-jitless] (treating
 data as code) is one factor in the security profile of a JS engine we wish
-to eliminate. In particular, _guest controlled_ JS compilation. Samuel GroB,
-the security lead of V8, presented an [excellent talk]() in 2026 about the
+to eliminate. In particular, _guest controlled_ JS compilation. Samuel Groß,
+the security lead of V8, presented an [excellent talk][js-engine-security-talk] in 2026 about the
 state of JS engine security. With this in mind, our primary motivation is to
 improve JavaScript performance under the restricted setting: when we can not
 use a JIT.
+
+{/* Editor:
+Scope this promise to guest-triggered JavaScript compilation. Paper §2.3 retains
+deterministic startup trampolines and compiled WebAssembly; regular expressions fall
+back to interpretation. Also verify the speaker attribution: the linked July 2026 deck
+identifies Samuel Groß with Google Project Zero, rather than as V8 security lead.
+*/}
 
 Additional motivations include, increasing code sharing to reduce memory
 consumption, allowing embedders to specialize their engine to a particular
@@ -48,10 +63,10 @@ performance optimizations from decoupling code generation from execution
 
 Providing the Baseline Interpreter AOT makes obvious sense. Each JavaScript
 run-time likely tiers into Baseline at some point, and will request a
-Baseline Interpreter. In this sense, it is effectively a determinsitic
+Baseline Interpreter. In this sense, it is effectively a deterministic
 artifact. But what about artifacts that are specialized to guest code? For
-instance, a user bespoke user function called `myApplicationsFoo` can not
-justifiably be included in an AOT image and shipped to every single FireFox
+instance, a bespoke user function called `myApplicationsFoo` can not
+justifiably be included in an AOT image and shipped to every single Firefox
 client around the world. We are seeking artifacts that, when provided AOT,
 bolster performance for general workloads. This is challenging given the
 diffuse nature of guest workloads on the web. How could we expect a
@@ -68,75 +83,151 @@ observing a specialized case of a generic operation, then dispatching to
 that special case when conditions recur. 
 
 For SpiderMonkey, an Inline Cache is a lazily populated linked list of
-specialized IC stubs. Every polymorphic bytecode in a script recives it's
-own IC. A generic routine like `GetProp` can have it's run-time semantics
+specialized IC stubs. Every polymorphic bytecode in a script receives its
+own IC. A generic routine like `GetProp` can have its run-time semantics
 specialized into an `ICStub` which is prepended to the front of the list.
 
 There is a skewed distribution of specializations of all JavaScript
 operations. For property access, the most common is a `FixedSlotLoad`
 (accessing an object property stored inline). There is also a
-`DynamicSlotLoad` (accessing a property from out of line dynamic storage.
+`DynamicSlotLoad` (accessing a property from out of line dynamic storage).
 The generic routine for a `GetProp` is conservative, correct in all cases,
 and as a consequence, relatively slow. The distribution of IC stub hits for
 a `GetProp`, globally, looks like so. The hint of an 80/20 rule is a great
 sign for recurrence. As we will see, we actually get much better than 80/20.
 
-```
-| Pattern (IC stub) | Share of GetProp hits |
-| --- | ---: |
-| `GuardToObject, GuardShape, LoadFixedSlotResult` | 39.2% |
-| `GuardToObject, GuardShape, LoadDynamicSlotResult` | 10.6% |
-| `GuardToObject, GuardShape, LoadInt32ArrayLengthResult` | 4.8% |
-| `GuardToString, LoadStringLengthResult` | 1.0% |
-| ... long tail of others
-```
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Pattern (IC stub)</th>
+      <th scope="col" style={{ textAlign: "right" }}>Share of GetProp hits</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>GuardToObject</code>, <code>GuardShape</code>, <code>LoadFixedSlotResult</code></td>
+      <td style={{ textAlign: "right" }}>39.2%</td>
+    </tr>
+    <tr>
+      <td><code>GuardToObject</code>, <code>GuardShape</code>, <code>LoadDynamicSlotResult</code></td>
+      <td style={{ textAlign: "right" }}>10.6%</td>
+    </tr>
+    <tr>
+      <td><code>GuardToObject</code>, <code>GuardShape</code>, <code>LoadInt32ArrayLengthResult</code></td>
+      <td style={{ textAlign: "right" }}>4.8%</td>
+    </tr>
+    <tr>
+      <td><code>GuardToString</code>, <code>LoadStringLengthResult</code></td>
+      <td style={{ textAlign: "right" }}>1.0%</td>
+    </tr>
+    <tr>
+      <td>… long tail of others</td>
+      <td style={{ textAlign: "right" }}>—</td>
+    </tr>
+  </tbody>
+</table>
+
+{/* Editor:
+Source needed for these four percentages: I could not locate this GetProp breakdown in
+the paper. Identify the workload set, counting method, and whether hits mean successful
+stub executions rather than attachment requests. The displayed rows sum to 55.6%; the
+remaining share would be 44.4% if these are exhaustive, disjoint categories. Values are
+preserved pending verification.
+*/}
 
  In the table above, more than 50% of the dynamic stub invocations are
- covered by four patterns. The first two internal cases of property accesses
+ covered by four patterns. The first two are internal cases of property accesses
  as described above. The final two are `array.length` and `string.length`,
  handled through `GetProp` since the types of the operands are unknown.
 
-The `GetProp` recurrence suggests there may exist a heavily skewed pareto
+The `GetProp` recurrence suggests there may exist a heavily skewed Pareto
 distribution of IC stubs across workloads. Perhaps one which we can sample
 the head of, up to some fixed byte-budget, and compile those common stubs
-AOT. We may reclaim a signifact proportion of the IC JIT class' performance
+AOT. We may reclaim a significant proportion of the IC JIT class' performance
 when no JIT is available.
+
+{/* Editor:
+A skewed empirical distribution does not by itself establish a Pareto distribution.
+Consider presenting Pareto as a hypothesis. Also distinguish selecting a head under a
+byte budget from the evaluated corpus: the paper records and deduplicates the training
+workloads; it does not report a byte-budget selection experiment.
+*/}
 
 ### Structured Inline Caching with CacheIR
 
 At the outset, it's not clear why run-time compiled IC stubs should exhibit
 such strong recurrence. There may be millions of IC stubs compiled across a
-large script. If each stub specializes to the dynamic instances of it's
+large script. If each stub specializes to the dynamic instances of its
 local operation, how can we expect such domination of a few stubs globally?
 The answer comes from two parts. First, stub-data separation.
 
 
 If we conceived
-of a run-time IC stub as an ad-hoc compilation, we might imagine the poitners
-of reciever object shapes to be baked into guards, or 
+of a run-time IC stub as an ad-hoc compilation, we might imagine the pointers
+of receiver object shapes to be baked into guards, or
 of Shape point
 
-TODO: Put in figure 1
+{/* Editor:
+Finish this paragraph using paper §3.2: each site stores its expected Shape and property
+offset in stub data; the body loads these values rather than embedding them. Guard
+failure follows that site’s next-stub pointer. Keep site-local stub objects distinct
+from shared native stub bodies.
+*/}
+
+<BlogImage
+  src="/images/ambermonkey_part2/ic-stub-sharing.svg"
+  alt="Two GetProp sites with different shapes and offsets share a fixed-slot stub body; one site also has a dynamic-slot specialization."
+  caption="Two property-access sites share compiled instructions while retaining separate shapes, offsets, and fallback chains."
+  darkMode="invert"
+/>
 
 The ops which comprise a pattern come from `CacheIR`. The paper can be found
-[here]().
+[here][cacheir-paper].
+
+{/* Editor:
+Supply the second half of the explanation: composition. The paper’s string–integer
+subtraction example combines GuardToString, GuardStringToInt32, GuardToInt32, and
+Int32SubResult. Matching CacheIR sequences permit body reuse even when sites hold
+different observations. Then bridge from within-runtime sharing to the cross-workload
+experiment below.
+*/}
 
 
-TODO: Put in figure 2
+<BlogImage
+  src="/images/ambermonkey_part2/corpus-growth.svg"
+  alt="Static and execution-weighted coverage of held-out IC and Baseline bodies as the corpus accumulates training sites."
+  caption="Artifacts collected from 24 tp6 training sites are compared with eight held-out sites. Static coverage counts distinct bodies; execution-weighted coverage counts their executions."
+  darkMode="invert"
+/>
+
+{/* Editor:
+Explain paper §3.3 before moving to builtins: roughly 5.1 million attachment requests
+collapse to 1,591 guest-script IC bodies. The full training corpus covers 89.8% of
+distinct held-out IC bodies and 99.96% of their executions, versus 12.9% and 22.2% for
+Baseline bodies. Sites are added in ascending distinct-IC-body count. These are not the
+request-coverage percentages in §7.1.
+*/}
 
 ### JavaScript Builtins
 
 One exception to Baseline compiled functions are the JavaScript builtins. As
 a standard library, JS builtins are accessible in every JS runtime, and
 therefore are a natural candidate for AOT compilation. Other JITless modes
-in engines have already picked up on this. V8 started [embedded builtins]()
+in engines have already picked up on this. V8 started [embedded builtins][embedded-builtins]
 more than a decade ago. They have since begun optimizing those AOT provided
-builtins with specialized fast-paths using [Torqe]. One issue with these
-techniques is that rely on hand-authoring by the highly skilled and smart
+builtins with specialized fast-paths using [Torque][torque]. One issue with these
+techniques is that they rely on hand-authoring by the highly skilled and smart
 developers. In contrast, AmberMonkey generates AOT artifacts through profile
 driven recurrence. If an artifact yields performance across general
 workloads, then we can AOT compile it. This system slots nicely into
 existing PGO infrastructure.
+
+{/* Editor:
+Check the timeline: the linked Embedded Builtins post is dated August 2018, eight years
+before this post, not more than a decade. Distinguish SpiderMonkey’s self-hosted JS
+functions from V8’s Torque/CodeStubAssembler-built corpus. Explain the proposed PGO
+integration as an opportunity: the paper’s experimental builds disable PGO and LTO.
+*/}
 
 ## AmberMonkey
 
@@ -146,11 +237,18 @@ recovered of the tier in a JIT-less setting -- motivated the implementation
 of _AmberMonkey_. There were a few design principles we kept in mind when
 designing it.
 
+{/* Editor:
+The preceding recurrence experiment supports body availability, not near-full recovery
+of the tier’s performance. Separate those claims; use the performance ablations in
+Results to establish the latter. The phrase “could near full performance recovered” also
+needs your intended wording.
+*/}
+
 ### Transparent Codegen
 
-First, AmberMonkey transparent w.r.t top-level code generation. Recall from
-[part one]() we illustrated JIT coupling ocurring in a code-generation
-routines with the example below. By trasparency, we mean that this code
+First, AmberMonkey is transparent w.r.t top-level code generation. Recall from
+[part one][part-one] we illustrated JIT coupling occurring in a code-generation
+routine with the example below. By transparency, we mean that this code
 generation routine does not need to change, and developers working on JIT
 code do not need to know AmberMonkey exists. When a code-generation flag
 is switched on to produce run-time independent code, all pointers flowing
@@ -160,10 +258,10 @@ a side table called the `RuntimeIndirectionTable`.
 
 ```c++
 /// In the handler for a Symbol JavaScript Op, emitted in the
-/// Baseline interpreter at run-time, the absoulte pointer to the
-/// well-known-symbols table is embededd into the code. This address
+/// Baseline interpreter at run-time, the absolute pointer to the
+/// well-known-symbols table is embedded into the code. This address
 /// changes in every subsequent run-time due to ASLR and heap
-/// non-determinsim.
+/// non-determinism.
 masm.movePtr(ImmPtr(&runtime->wellKnownSymbols()), scratch2);
 masm.loadPtr(BaseIndex(scratch2, scratch1, ScalePointer), scratch1);
 masm.tagValue(JSVAL_TYPE_SYMBOL, scratch1, R0);
@@ -171,7 +269,22 @@ masm.tagValue(JSVAL_TYPE_SYMBOL, scratch1, R0);
 
 ### The `RuntimeIndirectionTable` (RIT)
 
-TODO: Add figure from paper.
+<BlogImage
+  src="/images/ambermonkey_part2/runtime-indirection-table.svg"
+  alt="Several runtimes use private RITs and frame pointers to execute one shared Baseline Interpreter and shared CacheIR bodies."
+  caption="Shared AOT code first loads the RIT base from the current frame, then reads the current runtime’s pointer from a stable table slot."
+  darkMode="invert"
+/>
+
+{/* Editor:
+Outline from paper §4: (1) enumerate rebindable dependencies and assign stable slots;
+(2) populate the recording RIT using accessors; (3) reverse-lookup emitted pointers and
+reject unknown dependencies; (4) populate a new process’s RIT with its own addresses.
+Explicitly close the loop with Part I: the evaluated implementation loads the base from
+a frame field, rather than pinning a register. A Shape can live in stub data, but an
+embedded ephemeral Shape pointer makes an artifact ineligible. Linker-visible symbols
+use relocations instead of RIT loads.
+*/}
 
 ### AOT Image Recording 
 
@@ -187,15 +300,31 @@ configuration which lays out the AOT image in a binary manifest pattern
 (what artifacts start where, how large they are, what is their kind, etc),
 type-safe C++ encoders and decoders are synthesized. At run-time, in the
 loading process, the decoder will be pointed at the address exposed by the
-`extern'` dstart address and wind through the image until it finds the stub
+`extern` start address and wind through the image until it finds the stub
 or baseline function it is looking for.
+
+{/* Editor:
+Image-construction details to clarify from paper §5.1: the YAML schema defines metadata
+layouts and generates codecs; a binary directory locates each artifact’s metadata and
+code. The image also carries a version, fingerprint, and code-generation settings. A
+lookup miss falls back to interpretation, and unsupported embedded references are
+rejected during recording. Avoid implying that every reference goes through the RIT: the
+assembly scaffold also emits linker relocations.
+*/}
+
+<BlogImage
+  src="/images/ambermonkey_part2/aot-image.svg"
+  alt="An AOT image header and manifest locate metadata records and aligned code bodies separated by a page boundary."
+  caption="The packed image stores both instructions and reconstruction metadata. A page boundary separates executable code from metadata."
+  darkMode="invert"
+/>
 
 A consequence of building AOT images through recording is that provisioning
 a workload-tailored image is remarkably simple. While guest baseline
 functions don't recur across browser workloads, they will trivially recur
 for a fixed workload. This allows AmberMonkey to be used by SpiderMonkey
 embedders as an AOT JavaScript compiler. In the paper we call this an
-_Orcale corpus_. The sequence of commands is simple:
+_Oracle corpus_. The sequence of commands is simple:
 
 ```
 // TODO: fix with proper commands
@@ -204,6 +333,89 @@ _Orcale corpus_. The sequence of commands is simple:
 ./mach ambermonkey bootstrap
 ```
 
+{/* Editor:
+Command sequence remains an unverified draft. The paper describes recording, packing,
+and linking but does not document these three subcommands as a complete workflow.
+Replace with commands tested against the intended checkout and include the recording
+configuration, corpus path, rebuild, and restricted-execution invocation. A workload-
+specific recording covers observed paths, not necessarily every future path; misses must
+still interpret.
+*/}
+
 ## Results
 
+{/* Editor:
+Results outline from paper §§6–7: first define the configurations and training/test
+split, then report coverage, throughput, and costs. The fixed deployment image has 1,757
+IC bodies, 236 self-hosted Baseline bodies, and one interpreter; the earlier 1,591 count
+filters to guest-script IC bodies. Request coverage is 99.9% on tp6-Test, 99.6% on
+Speedometer 3.1, and 99.8% on Octane 2.0. Explain AM-Empty (interpreter only), AM-IC
+(adds IC bodies), AM (adds self-hosted bodies), and AM-Oracle (workload-specific bodies)
+before interpreting the graphs. Ten independent runs; 95% confidence intervals; Octane
+omits the WebAssembly zlib sub-benchmark. Source: main.tex and aot-image-stats.tex in
+cgo-2027.
+*/}
 
+<BlogImage
+  src="/images/ambermonkey_part2/speedometer-performance.svg"
+  alt="Speedometer 3.1 workload speedups for AM-Empty, AM-IC, AmberMonkey, and an oracle corpus, relative to interpreter-only execution."
+  caption="Speedometer 3.1: per-workload speedup over interpreter-only execution. Error bars show 95% confidence intervals across ten independent runs."
+  darkMode="invert"
+/>
+
+<BlogImage
+  src="/images/ambermonkey_part2/octane-performance.svg"
+  alt="Octane 2.0 subtest speedups for the same AOT configurations, relative to interpreter-only execution, on a logarithmic scale."
+  caption="Octane 2.0: per-workload speedup over interpreter-only execution, with a logarithmic y-axis. The WebAssembly-based zlib sub-benchmark is omitted."
+  darkMode="invert"
+/>
+
+{/* Editor:
+Performance narrative: AM delivers 1.63× interpreter throughput on Speedometer and 2.07×
+on Octane. IC bodies contribute 87% and 93% of the respective improvement. On
+Speedometer the fixed image retains 61% of default tiered-JIT throughput, while the
+oracle reaches 89%. Explain why high IC request coverage does not recover whole-function
+optimization, and why long-running Octane kernels have a different ceiling. If adding
+the V8 comparison, its bars are normalized to each engine’s own default; they do not
+compare absolute throughput.
+*/}
+
+<BlogImage
+  src="/images/ambermonkey_part2/indirection-overhead.svg"
+  alt="Retired instruction overhead of RIT indirection, linker relocations, and value mirroring across seven microbenchmarks."
+  caption="RIT overhead relative to runtime-generated Baseline code with Ion disabled. Linker relocations and value mirroring reduce the geometric-mean instruction overhead from 3.0% to 1.2%."
+  darkMode="invert"
+/>
+
+{/* Editor:
+Explain the two optimizations before this figure: native-linker relocations avoid RIT
+accesses for visible symbols; value mirroring avoids dependent loads for frequently
+polled runtime state. Instruction overhead is not a throughput penalty. Paper §7.4 also
+measures IC installation at 0.08 μs versus 3.50 μs for compilation, but end-to-end
+startup latency was too noisy to isolate a change.
+*/}
+
+<BlogImage
+  src="/images/ambermonkey_part2/executable-memory.svg"
+  alt="Peak content-process executable-code proportional set size, split into shared image pages and private runtime-generated code."
+  caption="Peak content-process executable-code PSS during Speedometer 3.1, separating shared pages from private runtime-generated code. Configurations are ordered by decreasing measured throughput."
+  darkMode="invert"
+/>
+
+{/* Editor:
+Finish with deployment cost and limits: the packed image is 1,198 kB (549 kB IC code,
+353 kB Baseline bodies, 19 kB interpreter, 247 kB metadata, 30 kB alignment); compressed
+Firefox package growth is 127 KB / 0.14%. PSS apportions shared pages and is not total
+browser memory. Mention x86-64 scope, no optimizing-tier artifacts,
+trampolines/WebAssembly, debugging patches, and generic fallback on corpus misses. For
+context, the paper’s related work identifies Portable Baseline Interpreter AOT ICs and
+Weval as the closest prior work; a short comparison would help position the
+contribution.
+*/}
+
+[part-one]: /posts/001_jitless_part1/
+[v8-jitless]: https://v8.dev/blog/jitless
+[js-engine-security-talk]: https://saelo.github.io/presentations/calif_community_talk_2026_state_of_js_engine_exploitation.pdf
+[cacheir-paper]: https://doi.org/10.1145/3617651.3622979
+[embedded-builtins]: https://v8.dev/blog/embedded-builtins
+[torque]: https://v8.dev/docs/torque
