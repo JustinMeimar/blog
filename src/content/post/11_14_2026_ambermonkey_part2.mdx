@@ -11,30 +11,32 @@ tags: ["cpp", "jit", "spidermonkey"]
 > it? 
 
 It's been roughly nine months since reusable JIT code for SpiderMonkey was
-introduced in [part one](). We set our aims on the Baseline Interpreter, a
-run-time generated JIT artifact, which had the prospect to be provided at
-compile time through bootstrapping. The impediment to reuse came from any
-run-time address being embedded into the JIT code directly. This "host" or
-"jit-code-coupling" is natrual, and even efficient, under the assumption
-that JIT code need not outlive it's host process. To address this, we
-considered two relocation models: direct code patching and indirection
-through a side table. Since one anticipated use of AOT JIT code is to
-improve code sharing, we went with indirection, since patching necessitates
-private copies of each artifact. With indirection our AOT artifacts can
-remain in immutable, sharable pages.
+introduced in [part one](). Back then we set our aims on the Baseline
+Interpreter, a run-time generated JIT artifact which had the prospect to be
+provided at compile time through bootstrapping. The impediment to reuse came
+from any run-time address being embedded into the JIT code directly. This
+"host" or "jit-code-coupling" is natrual, and even efficient, under the
+assumption that JIT code need not outlive it's host process. To address
+this, we considered two relocation models: direct code patching and
+indirection through a side table. Since one anticipated use of AOT JIT code
+is to improve code sharing, we went with indirection, since patching
+necessitates private copies of each artifact. With indirection our AOT
+artifacts can remain in immutable, sharable pages.
 
-In this post we'll explore expanding the classes of JIT artifacts we can
-provide AOT. There are a few intertwined motivations for doing so. First,
-Security. JIT compilers represent a point up and to the right of a
-complexity-performance trade off. Production grade engines acheive near
-native speeds of execution in steady states, but also are immense
-engineering efforts. [Dynamic executable memory]() (treating data as code)
-is one factor in the security profile of a JS engine we wish to eliminate.
-In particular, _guest controlled_ JS compilation. Samuel GroB, the security
-lead of V8, presented an [excellent talk]() in 2026 about the state of JS
-engine security. With this in mind, our primary motivation is to improve
-JavaScript performance under the restricted setting: when we can not use a
-JIT.
+Since then the project has grown and culminated into a paper accepted to CGO
+2027 in March. Pickup up where we left off, we'll explore expanding the
+classes of JIT artifacts we can provide AOT. There are a few intertwined
+motivations for this. Foremost is recovering performance under security
+restricted execution settings. JIT compilers represent a point
+up-and-to-the-right of a complexity-performance trade off. Production grade
+engines acheive near native speeds of execution in steady states, but are
+also an immense engineering effort. [Dynamic executable memory]() (treating
+data as code) is one factor in the security profile of a JS engine we wish
+to eliminate. In particular, _guest controlled_ JS compilation. Samuel GroB,
+the security lead of V8, presented an [excellent talk]() in 2026 about the
+state of JS engine security. With this in mind, our primary motivation is to
+improve JavaScript performance under the restricted setting: when we can not
+use a JIT.
 
 Additional motivations include, increasing code sharing to reduce memory
 consumption, allowing embedders to specialize their engine to a particular
@@ -45,16 +47,163 @@ performance optimizations from decoupling code generation from execution
 ## The Distribution of JIT Compilation
 
 Providing the Baseline Interpreter AOT makes obvious sense. Each JavaScript
-run-time tiers into the first Tier, Baseline, at some point, and will
-request a Baseline Interpreter. In this sense, it is effectively a
-determinsitic artifact. But what about artifacts that are specialized to
-guest code? For instance, a user bespoke user function called
-`myApplicationsFoo` can not justifiably be included in an AOT image and
-shipped to every single FireFox client around the world. We are seeking
-artifacts that, when provided AOT, bolster performance for general
-workloads. In particular, we're 
+run-time likely tiers into Baseline at some point, and will request a
+Baseline Interpreter. In this sense, it is effectively a determinsitic
+artifact. But what about artifacts that are specialized to guest code? For
+instance, a user bespoke user function called `myApplicationsFoo` can not
+justifiably be included in an AOT image and shipped to every single FireFox
+client around the world. We are seeking artifacts that, when provided AOT,
+bolster performance for general workloads. This is challenging given the
+diffuse nature of guest workloads on the web. How could we expect a
+recurrence of JIT code between arbitrary sites? To see into the problem we
+must consider the different granularities of JIT compilation and their
+compilation distributions.
+
+### Signs of Recurrence in Inline Caching
+
+Keeping the complexity-performance trade-off in mind, Inline Caching is one
+JIT technique which yields great speedups above interpretation for
+relatively low complexity. Inline Caching can generally be thought of as
+observing a specialized case of a generic operation, then dispatching to
+that special case when conditions recur. 
+
+For SpiderMonkey, an Inline Cache is a lazily populated linked list of
+specialized IC stubs. Every polymorphic bytecode in a script recives it's
+own IC. A generic routine like `GetProp` can have it's run-time semantics
+specialized into an `ICStub` which is prepended to the front of the list.
+
+There is a skewed distribution of specializations of all JavaScript
+operations. For property access, the most common is a `FixedSlotLoad`
+(accessing an object property stored inline). There is also a
+`DynamicSlotLoad` (accessing a property from out of line dynamic storage.
+The generic routine for a `GetProp` is conservative, correct in all cases,
+and as a consequence, relatively slow. The distribution of IC stub hits for
+a `GetProp`, globally, looks like so. The hint of an 80/20 rule is a great
+sign for recurrence. As we will see, we actually get much better than 80/20.
+
+```
+| Pattern (IC stub) | Share of GetProp hits |
+| --- | ---: |
+| `GuardToObject, GuardShape, LoadFixedSlotResult` | 39.2% |
+| `GuardToObject, GuardShape, LoadDynamicSlotResult` | 10.6% |
+| `GuardToObject, GuardShape, LoadInt32ArrayLengthResult` | 4.8% |
+| `GuardToString, LoadStringLengthResult` | 1.0% |
+| ... long tail of others
+```
+
+ In the table above, more than 50% of the dynamic stub invocations are
+ covered by four patterns. The first two internal cases of property accesses
+ as described above. The final two are `array.length` and `string.length`,
+ handled through `GetProp` since the types of the operands are unknown.
+
+The `GetProp` recurrence suggests there may exist a heavily skewed pareto
+distribution of IC stubs across workloads. Perhaps one which we can sample
+the head of, up to some fixed byte-budget, and compile those common stubs
+AOT. We may reclaim a signifact proportion of the IC JIT class' performance
+when no JIT is available.
 
 ### Structured Inline Caching with CacheIR
 
+At the outset, it's not clear why run-time compiled IC stubs should exhibit
+such strong recurrence. There may be millions of IC stubs compiled across a
+large script. If each stub specializes to the dynamic instances of it's
+local operation, how can we expect such domination of a few stubs globally?
+The answer comes from two parts. First, stub-data separation.
+
+
+If we conceived
+of a run-time IC stub as an ad-hoc compilation, we might imagine the poitners
+of reciever object shapes to be baked into guards, or 
+of Shape point
+
+TODO: Put in figure 1
+
+The ops which comprise a pattern come from `CacheIR`. The paper can be found
+[here]().
+
+
+TODO: Put in figure 2
+
 ### JavaScript Builtins
+
+One exception to Baseline compiled functions are the JavaScript builtins. As
+a standard library, JS builtins are accessible in every JS runtime, and
+therefore are a natural candidate for AOT compilation. Other JITless modes
+in engines have already picked up on this. V8 started [embedded builtins]()
+more than a decade ago. They have since begun optimizing those AOT provided
+builtins with specialized fast-paths using [Torqe]. One issue with these
+techniques is that rely on hand-authoring by the highly skilled and smart
+developers. In contrast, AmberMonkey generates AOT artifacts through profile
+driven recurrence. If an artifact yields performance across general
+workloads, then we can AOT compile it. This system slots nicely into
+existing PGO infrastructure.
+
+## AmberMonkey
+
+The empirical finding above -- that an extremely strong recurrence of
+CacheIR compiled IC stubs across workloads could near full performance
+recovered of the tier in a JIT-less setting -- motivated the implementation
+of _AmberMonkey_. There were a few design principles we kept in mind when
+designing it.
+
+### Transparent Codegen
+
+First, AmberMonkey transparent w.r.t top-level code generation. Recall from
+[part one]() we illustrated JIT coupling ocurring in a code-generation
+routines with the example below. By trasparency, we mean that this code
+generation routine does not need to change, and developers working on JIT
+code do not need to know AmberMonkey exists. When a code-generation flag
+is switched on to produce run-time independent code, all pointers flowing
+through the common `masm` routines like `movePtr`, `loadPtr`, `addPtr`, etc,
+are intercepted, looked up into a table, then replaced with indirection into
+a side table called the `RuntimeIndirectionTable`.
+
+```c++
+/// In the handler for a Symbol JavaScript Op, emitted in the
+/// Baseline interpreter at run-time, the absoulte pointer to the
+/// well-known-symbols table is embededd into the code. This address
+/// changes in every subsequent run-time due to ASLR and heap
+/// non-determinsim.
+masm.movePtr(ImmPtr(&runtime->wellKnownSymbols()), scratch2);
+masm.loadPtr(BaseIndex(scratch2, scratch1, ScalePointer), scratch1);
+masm.tagValue(JSVAL_TYPE_SYMBOL, scratch1, R0);
+```
+
+### The `RuntimeIndirectionTable` (RIT)
+
+TODO: Add figure from paper.
+
+### AOT Image Recording 
+
+The second design aspect of AmberMonkey is that it accumulates an AOT image
+via profiling or recording, rather than hand authoring. Once the AOT
+code-generation flag is turned on, an AOT recording directory can be
+supplied and AmberMonkey will write out every encountered IC stub and
+Baseline compiled function. During bootstrapping some scripts will pack the
+artifacts into an image format, then reference it in an assembly scaffold
+which uses the `.incbin` directive to shim binary code into an object file.
+Two `extern` symbols delimit the start and end of the image. From the YAML
+configuration which lays out the AOT image in a binary manifest pattern
+(what artifacts start where, how large they are, what is their kind, etc),
+type-safe C++ encoders and decoders are synthesized. At run-time, in the
+loading process, the decoder will be pointed at the address exposed by the
+`extern'` dstart address and wind through the image until it finds the stub
+or baseline function it is looking for.
+
+A consequence of building AOT images through recording is that provisioning
+a workload-tailored image is remarkably simple. While guest baseline
+functions don't recur across browser workloads, they will trivially recur
+for a fixed workload. This allows AmberMonkey to be used by SpiderMonkey
+embedders as an AOT JavaScript compiler. In the paper we call this an
+_Orcale corpus_. The sequence of commands is simple:
+
+```
+// TODO: fix with proper commands
+./mach ambermonkey record <start workload>
+./mach ambermonkey pack
+./mach ambermonkey bootstrap
+```
+
+## Results
+
 

@@ -742,6 +742,10 @@ body::before {
   content: "·";
   margin-right: 0.6rem;
 }
+.article-controls .article-meta {
+  margin-bottom: 0;
+  flex-shrink: 1;
+}
 .article-header h1 { text-wrap: balance; }
 .article-header .detail-description { margin-top: 0.5rem; font-size: 0.95rem; }
 .article-tags { margin-top: 0.75rem; color: var(--text-faint); }

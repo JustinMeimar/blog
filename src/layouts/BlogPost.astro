@@ -2,6 +2,8 @@
 import Base from "./Base.astro";
 import Footer from "../components/Footer.astro";
 import Comments from "../components/Comments.astro";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import Search from "../components/Search.astro";
 import { formatDate } from "../utils/posts";
 
 interface Heading {
@@ -80,10 +82,24 @@ const showToc = headings.length > 3;
     <article class="animate-fade-up stagger-1" data-pagefind-body>
       <!-- Post header -->
       <header class="detail-header article-header" data-pagefind-ignore>
-        <div class="detail-meta article-meta">
-          <time datetime={publishDate.toISOString()}>{formatDate(publishDate)}</time>
-          {minutesRead && <span>{minutesRead}</span>}
-          {updatedDate && <span>Updated {formatDate(updatedDate)}</span>}
+        <div class="article-controls flex items-center justify-between gap-4 mb-3">
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <a
+              href={activeSection === 'micro-blog' ? '/micro-blog' : '/posts'}
+              class="font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+            >
+              ← {activeSection === 'micro-blog' ? 'micro-blog' : 'writing'}
+            </a>
+            <div class="detail-meta article-meta">
+              <time datetime={publishDate.toISOString()}>{formatDate(publishDate)}</time>
+              {minutesRead && <span>{minutesRead}</span>}
+              {updatedDate && <span>Updated {formatDate(updatedDate)}</span>}
+            </div>
+          </div>
+          <div class="flex shrink-0 items-center gap-4">
+            <Search />
+            <ThemeToggle />
+          </div>
         </div>
         <div class="detail-heading">
           <h1>{title}</h1>
