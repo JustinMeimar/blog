@@ -1,0 +1,60 @@
+---
+title: "AOT SpiderMonkey Part II: AmberMonkey"
+publishDate: 2026-11-14
+description: "A Transparent AOT Code Generation Backend for SpiderMonkey"
+tags: ["cpp", "jit", "spidermonkey"]
+---
+
+> At first glance, reusing JIT code in a production JavaScript engine
+> appears a hopeless prospect. JIT code is specialized guest code, and
+> guest code has extremely diffuse recurrence in a browser setting. Or does
+> it? 
+
+It's been roughly nine months since reusable JIT code for SpiderMonkey was
+introduced in [part one](). We set our aims on the Baseline Interpreter, a
+run-time generated JIT artifact, which had the prospect to be provided at
+compile time through bootstrapping. The impediment to reuse came from any
+run-time address being embedded into the JIT code directly. This "host" or
+"jit-code-coupling" is natrual, and even efficient, under the assumption
+that JIT code need not outlive it's host process. To address this, we
+considered two relocation models: direct code patching and indirection
+through a side table. Since one anticipated use of AOT JIT code is to
+improve code sharing, we went with indirection, since patching necessitates
+private copies of each artifact. With indirection our AOT artifacts can
+remain in immutable, sharable pages.
+
+In this post we'll explore expanding the classes of JIT artifacts we can
+provide AOT. There are a few intertwined motivations for doing so. First,
+Security. JIT compilers represent a point up and to the right of a
+complexity-performance trade off. Production grade engines acheive near
+native speeds of execution in steady states, but also are immense
+engineering efforts. [Dynamic executable memory]() (treating data as code)
+is one factor in the security profile of a JS engine we wish to eliminate.
+In particular, _guest controlled_ JS compilation. Samuel GroB, the security
+lead of V8, presented an [excellent talk]() in 2026 about the state of JS
+engine security. With this in mind, our primary motivation is to improve
+JavaScript performance under the restricted setting: when we can not use a
+JIT.
+
+Additional motivations include, increasing code sharing to reduce memory
+consumption, allowing embedders to specialize their engine to a particular
+workload (fixed input AOT compilation), and some potential future
+performance optimizations from decoupling code generation from execution
+(snapshotting, giving artifacts fixed addresses at Compile Time, etc.)
+
+## The Distribution of JIT Compilation
+
+Providing the Baseline Interpreter AOT makes obvious sense. Each JavaScript
+run-time tiers into the first Tier, Baseline, at some point, and will
+request a Baseline Interpreter. In this sense, it is effectively a
+determinsitic artifact. But what about artifacts that are specialized to
+guest code? For instance, a user bespoke user function called
+`myApplicationsFoo` can not justifiably be included in an AOT image and
+shipped to every single FireFox client around the world. We are seeking
+artifacts that, when provided AOT, bolster performance for general
+workloads. In particular, we're 
+
+### Structured Inline Caching with CacheIR
+
+### JavaScript Builtins
+
