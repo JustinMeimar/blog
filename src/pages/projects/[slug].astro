@@ -13,7 +13,7 @@ export async function getStaticPaths() {
 
 const { project } = Astro.props;
 const { Content } = await render(project);
-const relatedPosts = await getRelatedPosts(project);
+const relatedPosts = project.data.showRelatedPosts ? await getRelatedPosts(project) : [];
 ---
 
 <ProjectPage

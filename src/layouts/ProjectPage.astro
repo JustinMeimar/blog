@@ -40,78 +40,30 @@ const { name, description, coverImage, images = [], year, status, tags, links, a
 ---
 
 <Base title={`${name} — justinmeimar`} description={description}>
-  <div class="max-w-2xl mx-auto px-6 py-12 md:py-20 topo-mask">
-    <Header activeSection="projects" />
+  <div class="site-shell mx-auto px-6 py-12 md:py-20 topo-mask">
+    <Header activeSection="projects" compactSpacing />
+    <div class="mb-6 h-px bg-[var(--border)]" aria-hidden="true"></div>
 
     <article class="animate-fade-up stagger-1" data-pagefind-body>
       <!-- Project header -->
-      <header class="mb-8" data-pagefind-ignore>
-        <div class="flex items-baseline gap-4 mb-3 font-mono text-xs text-[var(--text-faint)]">
-          <span>{year}</span>
-          <span>·</span>
-          <span>{status}</span>
+      <header class="detail-header" data-pagefind-ignore>
+        <div class="detail-heading">
+          <h1>{name}</h1>
+          <div class="detail-meta"><span>{year}</span><span>{status}</span></div>
         </div>
-
-        <h1 class="font-serif text-3xl md:text-4xl font-normal tracking-tight mb-2">
-          {name}
-        </h1>
-
-        <p class="font-mono text-sm text-[var(--text-muted)] mb-6">
-          {description}
-        </p>
-
-        <!-- Awards as simple text -->
-        {awards.length > 0 && (
-          <p class="font-mono text-xs text-[var(--text-faint)] mb-6 tracking-wide uppercase">
-            <span class="text-[var(--accent-pop)] opacity-70 mr-1">◆</span>
-            {formatAwards(awards)}
-          </p>
-        )}
-
-        <!-- Links -->
-        <div class="flex flex-wrap gap-4 mb-6">
-          {links.github && (
-            <a
-              href={links.github}
-              target="_blank"
-              rel="noopener"
-              class="font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-            >
-              GitHub ↗
-            </a>
-          )}
-          {links.demo && (
-            <a
-              href={links.demo}
-              target="_blank"
-              rel="noopener"
-              class="font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-            >
-              Demo ↗
-            </a>
-          )}
-          {links.docs && (
-            <a
-              href={links.docs}
-              target="_blank"
-              rel="noopener"
-              class="font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-            >
-              Docs ↗
-            </a>
-          )}
-        </div>
-
-        <!-- Tags -->
-        <div class="flex flex-wrap gap-x-3 gap-y-1">
-          {tags.map((tag) => (
-            <a
-              href={`/tags/${tag}`}
-              class="font-mono text-[10px] text-[var(--text-faint)] hover:text-[var(--text-muted)] transition-colors"
-            >
-              #{tag}
-            </a>
-          ))}
+        {description && <p class="detail-description">{description}</p>}
+        {awards.length > 0 && <p class="detail-meta">{formatAwards(awards)}</p>}
+        <div class="detail-utility">
+          <div class="detail-tags">
+            {tags.map(tag => <a href={`/tags/${tag}`}>#{tag}</a>)}
+          </div>
+          <div class="detail-links">
+            {Object.entries(links).filter(([, href]) => href).map(([kind, href]) => (
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                {{ github: 'GitHub', demo: 'Demo', npm: 'npm', docs: 'Docs' }[kind]} ↗
+              </a>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -127,9 +79,6 @@ const { name, description, coverImage, images = [], year, status, tags, links, a
           />
         </div>
       )}
-
-      <!-- Divider -->
-      <div class="mb-8 h-px bg-[var(--border)]"></div>
 
       <!-- Project content -->
       <div class="prose">

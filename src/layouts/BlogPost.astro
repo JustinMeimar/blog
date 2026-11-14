@@ -39,7 +39,7 @@ const showToc = headings.length > 3;
 >
   {/* Mobile sticky header - only shows when scrolled past article header */}
   {showToc && (
-    <div id="mobile-toc-bar" class="fixed top-0 left-0 right-0 z-40 lg:hidden translate-y-[-100%] pointer-events-none transition-transform duration-300 ease-out">
+    <div id="mobile-toc-bar" class="fixed top-0 left-0 right-0 z-40 floating-toc-mobile translate-y-[-100%] pointer-events-none transition-transform duration-300 ease-out">
       <button 
         id="mobile-toc-trigger"
         class="w-full px-3 py-1.5 flex items-center justify-between text-left bg-[var(--bg-paper)] border-y border-[var(--border)] relative overflow-hidden"
@@ -76,61 +76,29 @@ const showToc = headings.length > 3;
     </div>
   )}
 
-  <div class={`mx-auto px-6 py-12 md:py-20 topo-mask ${showToc ? 'max-w-6xl' : 'max-w-3xl'}`}>
-    <Header activeSection={activeSection} />
+  <div class="site-shell mx-auto px-6 py-12 md:py-20 topo-mask">
+    <Header activeSection={activeSection} compactSpacing />
+    <div class="mb-6 h-px bg-[var(--border)]" aria-hidden="true"></div>
 
-    <div class={showToc ? 'lg:grid lg:grid-cols-[1fr_220px] lg:gap-12' : ''}>
-    <article class="animate-fade-up stagger-1 max-w-3xl" data-pagefind-body>
+    <div class="article-with-toc">
+    <article class="animate-fade-up stagger-1" data-pagefind-body>
       <!-- Post header -->
-      <header class="mb-8" data-pagefind-ignore>
-        <div class="flex items-baseline gap-4 mb-4 font-mono text-xs text-[var(--text-muted)]">
-          <time datetime={publishDate.toISOString()}>
-            {formatDate(publishDate)}
-          </time>
-          {
-            minutesRead && (
-              <>
-                <span class="text-[var(--text-faint)]">·</span>
-                <span>{minutesRead}</span>
-              </>
-            )
-          }
-          {
-            updatedDate && (
-              <>
-                <span class="text-[var(--text-faint)]">·</span>
-                <span>Updated {formatDate(updatedDate)}</span>
-              </>
-            )
-          }
+      <header class="detail-header article-header" data-pagefind-ignore>
+        <div class="detail-meta article-meta">
+          <time datetime={publishDate.toISOString()}>{formatDate(publishDate)}</time>
+          {minutesRead && <span>{minutesRead}</span>}
+          {updatedDate && <span>Updated {formatDate(updatedDate)}</span>}
         </div>
-
-        <h1 class="font-serif text-3xl md:text-4xl font-normal tracking-tight mb-4">
-          {title}
-        </h1>
-
-        <p class="font-serif text-lg text-[var(--text-muted)] leading-relaxed">
-          {description}
-        </p>
-
-        {
-          tags.length > 0 && (
-            <div class="mt-6 flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <a
-                  href={`/tags/${tag}`}
-                  class="font-mono text-xs px-2 py-1 rounded bg-[var(--bg-paper)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-                >
-                  #{tag}
-                </a>
-              ))}
-            </div>
-          )
-        }
+        <div class="detail-heading">
+          <h1>{title}</h1>
+        </div>
+        {description && <p class="detail-description">{description}</p>}
+        {tags.length > 0 && (
+          <div class="detail-tags article-tags">
+            {tags.map(tag => <a href={`/tags/${tag}`}>#{tag}</a>)}
+          </div>
+        )}
       </header>
-
-      <!-- Divider -->
-      <div class="mb-8 h-px bg-[var(--border)]"></div>
 
       <!-- Post content -->
       <div class="prose">
@@ -162,7 +130,7 @@ const showToc = headings.length > 3;
 
     {/* Table of Contents - sticky sidebar */}
     {showToc && (
-      <aside class="hidden lg:block" data-pagefind-ignore>
+      <aside class="floating-toc" data-pagefind-ignore>
         <nav class="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto overscroll-contain toc-scroll">
           <h2 class="font-mono text-[10px] tracking-widest uppercase text-[var(--text-faint)] mb-3 pt-8">
             On this page
@@ -190,7 +158,7 @@ const showToc = headings.length > 3;
     )}
     </div>
 
-    <div class="mt-16 max-w-3xl">
+    <div class="mt-16">
       <Footer />
     </div>
   </div>
@@ -203,6 +171,20 @@ const showToc = headings.length > 3;
       function initToc() {
         // Cleanup previous instance
         cleanupToc?.();
+
+        const articleWrapper = document.querySelector('.article-with-toc');
+        function fitSidebar() {
+          if (!articleWrapper) return;
+          const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+          // Sidebar (13rem), gutter (2rem), and a minimum outer margin (1rem).
+          const fits = articleWrapper.getBoundingClientRect().right + 16 * rem <= document.documentElement.clientWidth;
+          document.documentElement.dataset.tocSidebar = String(fits);
+        }
+        const sidebarObserver = new ResizeObserver(fitSidebar);
+        if (articleWrapper) sidebarObserver.observe(articleWrapper);
+        sidebarObserver.observe(document.documentElement);
+        window.addEventListener('resize', fitSidebar);
+        fitSidebar();
 
         const tocLinks = document.querySelectorAll('.toc-link');
         const mobileTocLinks = document.querySelectorAll('.mobile-toc-link');
@@ -309,7 +291,7 @@ const showToc = headings.length > 3;
           
           let activeIndex = 0;
           for (let i = 0; i < headings.length; i++) {
-            if (headings[i].offsetTop <= scrollPos) {
+            if (headings[i].getBoundingClientRect().top + window.scrollY <= scrollPos) {
               activeIndex = i;
             }
           }
@@ -370,7 +352,7 @@ const showToc = headings.length > 3;
           if (progressBar) {
             const article = document.querySelector('article');
             if (article) {
-              const articleTop = article.offsetTop;
+              const articleTop = article.getBoundingClientRect().top + window.scrollY;
               const articleHeight = article.offsetHeight;
               const windowHeight = window.innerHeight;
               const scrolled = window.scrollY - articleTop + windowHeight;
@@ -407,6 +389,9 @@ const showToc = headings.length > 3;
 
         // Return cleanup function
         cleanupToc = () => {
+          sidebarObserver.disconnect();
+          window.removeEventListener('resize', fitSidebar);
+          delete document.documentElement.dataset.tocSidebar;
           window.removeEventListener('scroll', handleScroll);
           document.removeEventListener('click', handleOutsideClick);
           mobileDropdown?.removeEventListener('transitionend', handleTransitionEnd);

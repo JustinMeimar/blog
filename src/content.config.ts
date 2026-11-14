@@ -57,6 +57,7 @@ const project = defineCollection({
           docs: z.string().url().optional(),
         })
         .default({}),
+      showRelatedPosts: z.boolean().default(true),
       featured: z.boolean().default(false),
       featuredOrder: z.number().default(99),
       awards: z

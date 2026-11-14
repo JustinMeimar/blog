@@ -125,8 +125,10 @@ const jsonLd = isHomePage ? websiteSchema : (isArticle ? articleSchema : null);
     <!-- Theme initialization (prevents flash) -->
     <script is:inline>
       function getTheme() {
-        const stored = localStorage.getItem("theme");
-        if (stored) return stored;
+        try {
+          const stored = localStorage.getItem("theme");
+          if (stored === "dark" || stored === "light") return stored;
+        } catch {}
         return window.matchMedia("(prefers-color-scheme: dark)").matches
           ? "dark"
           : "light";
@@ -143,7 +145,7 @@ const jsonLd = isHomePage ? websiteSchema : (isArticle ? articleSchema : null);
   </head>
   <body class="min-h-screen" data-pagefind-ignore>
     <LoadingIndicator />
-    <div class="relative" style="z-index: 10;">
+    <div class="relative site-viewport" style="z-index: 10;">
       <slot />
     </div>
 

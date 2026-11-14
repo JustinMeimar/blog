@@ -231,48 +231,36 @@ body::before {
  * Prose styles for blog content
  */
 .prose {
+  --paragraph-space: 1rem;
+  --section-space: 2rem;
   font-family: var(--font-serif);
   font-weight: 400;
   font-size: 1rem;
-  line-height: 1.75;
+  line-height: 1.65;
   color: var(--text);
 }
 
-@media (min-width: 768px) {
-  .prose {
-    font-size: 1.1rem;
-    line-height: 1.7;
-  }
-}
-
-/* Paragraphs */
-.prose p {
-  margin-bottom: 1.75em;
-}
-
-.prose p:last-child {
-  margin-bottom: 0;
-}
-
-/* Headings */
-.prose h2 {
+/* One rhythm for prose: ordinary blocks, section breaks, then heading-to-text. */
+.prose p { margin: 0 0 var(--paragraph-space); }
+.prose p:last-child { margin-bottom: 0; }
+.prose h2, .prose h3, .prose h4 {
   font-family: var(--font-serif);
-  font-size: 1.5rem;
   font-weight: 400;
   letter-spacing: -0.01em;
-  margin-top: 3em;
-  margin-bottom: 1em;
+  line-height: 1.3;
   color: var(--text);
 }
-
+.prose h2 {
+  font-size: 1.4rem;
+  margin: var(--section-space) 0 0.75rem;
+}
 .prose h3 {
-  font-family: var(--font-serif);
-  font-size: 1.25rem;
-  font-weight: 400;
-  margin-top: 2.5em;
-  margin-bottom: 0.75em;
-  color: var(--text);
+  font-size: 1.15rem;
+  margin: 1.5rem 0 0.5rem;
 }
+.prose h4 { font-size: 1rem; margin: 1.5rem 0 0.5rem; }
+.prose > :first-child { margin-top: 0; }
+.prose h2 + h3, .prose h3 + h4 { margin-top: 0.75rem; }
 
 /* Links */
 .prose a {
@@ -294,8 +282,8 @@ body::before {
   font-style: normal;
   color: var(--text-muted);
   border-left: 2px solid var(--border);
-  padding-left: 1.5em;
-  margin: 2em 0;
+  padding-left: 1rem;
+  margin: 1.5rem 0;
 }
 
 .prose blockquote p:last-child {
@@ -327,7 +315,7 @@ body::before {
 
 /* Code blocks */
 .prose pre {
-  margin: 2em 0;
+  margin: 1.5rem 0;
   font-size: 0.85em;
 }
 
@@ -338,7 +326,7 @@ body::before {
 
 /* Expressive Code styling */
 .expressive-code {
-  margin: 2em 0;
+  margin: 1.5rem 0;
   position: relative;
 }
 
@@ -401,7 +389,7 @@ body::before {
 /* Lists */
 .prose ul,
 .prose ol {
-  margin: 1.5em 0;
+  margin: 1.5rem 0;
   padding-left: 1.75em;
 }
 
@@ -436,7 +424,7 @@ body::before {
   border: none;
   height: 1px;
   background-color: var(--border);
-  margin: 2em 0;
+  margin: 1.5rem 0;
 }
 
 /* Strong */
@@ -460,7 +448,7 @@ body::before {
 }
 
 .prose figure {
-  margin: 2em 0;
+  margin: 1.5rem 0;
 }
 
 .prose figcaption {
@@ -524,7 +512,7 @@ body::before {
   .prose figure.float-left {
     float: none;
     max-width: 100%;
-    margin: 2em 0;
+    margin: 1.5rem 0;
   }
 }
 
@@ -592,7 +580,7 @@ body::before {
   display: block;
   overflow-x: auto;
   width: 100%;
-  margin: 2em 0;
+  margin: 1.5rem 0;
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   border-collapse: collapse;
@@ -670,4 +658,112 @@ body::before {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Shared page width; the reading sidebar never changes this measure. */
+.site-shell { max-width: 46rem; }
+.article-with-toc { position: relative; }
+.floating-toc { display: none; }
+/* JS measures the actual gutter, including zoom and font scaling. */
+[data-toc-sidebar="true"] .floating-toc {
+  display: block;
+  position: absolute;
+  left: calc(100% + 2rem);
+  top: 0;
+  bottom: 0;
+  width: 13rem;
+}
+[data-toc-sidebar="true"] .floating-toc-mobile { display: none; }
+
+.detail-header {
+  margin-bottom: 2rem;
+}
+.detail-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.detail-heading h1 {
+  font-family: var(--font-serif);
+  font-size: 1.8rem;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  min-width: 0;
+}
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem 0.75rem;
+  flex-shrink: 0;
+  max-width: 12rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+.detail-description {
+  margin-top: 0.5rem;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.detail-utility {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+.detail-tags, .detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+.detail-tags a:hover, .detail-links a:hover { text-decoration: underline; }
+@media (max-width: 40rem) {
+  .detail-heading { flex-direction: column; gap: 0.5rem; }
+  .detail-meta { max-width: none; justify-content: flex-start; }
+}
+
+.article-meta {
+  justify-content: flex-start;
+  max-width: none;
+  margin-bottom: 0.75rem;
+  gap: 0.25rem 0.6rem;
+}
+.article-meta > * + *::before {
+  content: "·";
+  margin-right: 0.6rem;
+}
+.article-header h1 { text-wrap: balance; }
+.article-header .detail-description { margin-top: 0.5rem; font-size: 0.95rem; }
+.article-tags { margin-top: 0.75rem; color: var(--text-faint); }
+.article-header { margin-bottom: 2rem; }
+
+/* Matching feedback for the header's search and theme controls. */
+.header-control {
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+.header-control img {
+  opacity: 0.8;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+.header-control:is(:hover, :focus-visible) { transform: translateY(-1px); }
+.header-control:is(:hover, :focus-visible) img {
+  opacity: 1;
+  transform: rotate(-8deg) scale(1.08);
+}
+.header-control:active { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .header-control, .header-control img { transition: none; }
+  .header-control:is(:hover, :focus-visible),
+  .header-control:is(:hover, :focus-visible) img { transform: none; }
 }
