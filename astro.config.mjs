@@ -51,7 +51,7 @@ export default defineConfig({
         },
       },
     }),
-    mdx(),
+    mdx({ gfm: true }),
     sitemap(),
   ],
   vite: {
