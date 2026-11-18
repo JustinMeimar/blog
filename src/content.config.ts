@@ -7,6 +7,7 @@ const post = defineCollection({
     z.object({
       title: z.string().max(80),
       description: z.string().max(160),
+      publish: z.boolean().default(true),
       publishDate: z.coerce.date(),
       updatedDate: z.coerce.date().optional(),
       coverImage: z

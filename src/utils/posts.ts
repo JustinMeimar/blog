@@ -4,8 +4,8 @@ export type Post = CollectionEntry<"post">;
 
 export async function getAllPosts(): Promise<Post[]> {
   const posts = await getCollection("post", ({ data }) => {
-    // Filter out drafts in production
-    return import.meta.env.PROD ? !data.draft : true;
+    // Exclude unpublished posts everywhere and drafts in production.
+    return data.publish && (import.meta.env.PROD ? !data.draft : true);
   });
 
   return posts.sort(

@@ -1,6 +1,6 @@
 import type { APIRoute, GetStaticPaths } from "astro";
 import type { ReactNode } from "react";
-import { getCollection } from "astro:content";
+import { getAllPosts } from "../../utils/posts";
 import satori from "satori";
 import sharp from "sharp";
 import fs from "fs/promises";
@@ -46,7 +46,7 @@ async function loadFonts() {
 }
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const posts = await getCollection("post");
+  const posts = await getAllPosts();
   return posts.map((post) => ({
     params: { slug: post.id },
     props: { 
