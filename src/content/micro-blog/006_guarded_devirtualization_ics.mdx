@@ -1,0 +1,89 @@
+---
+title: "Guarded Devirtualization in IC Dispatch"
+publishDate: 2026-11-19
+description: "Avoiding Hard to Predict Indirect Branches"
+tags: ["tools", "cli", "rust"]
+---
+
+import { links } from './006_guarded_devirtualization_ics.ts';
+
+An indirect jump can be parameterized at run-time by many different
+targets. A classic "over-constrained" indirect jump is the computed
+goto within a threaded dispatch interpreter:
+
+```c
+op_ADD:
+    --sp;
+    sp[-1] += sp[0];
+    goto *dispatch[*++pc];
+```
+
+The reason is that there is _virtually_ no prior (or pun intended), on what
+the next op-handler may be. A set of globally common ops will likely follow
+an `ADD`, but hard to say which one. And to inform the BTB is even less
+likely. In a paper measuring VM performance found indirect branches had worse than 50% accuracy [1].
+
+Indirect jumps occur in many places within a VM. In SpiderMonkey's <a href={links.baseline_interp}>Baseline
+tiers</a>, an Inline Cache of specialized stubs precedes every polymorphic
+JavaScript op, such as `Call`, `SetElem`, `GetProp`, `SetProp`, etc. The
+data-structure used to store the stubs is a lazily populated linked list.
+The indirect jump occurs through an `ICStubReg` holding the first `ICStub`
+in the list. The interpreter emits this call in
+<a href={links.emit_next_ic}><code>BaselineInterpreterCodeGen::emitNextIC</code></a>:
+
+```cpp
+/// BaselineInterpreterCodeGen::emitNextIC. Called for each of the 255
+/// JS Op handlers during Baseline interpreter code-gen. While the IC
+/// sites are local to the byte-code their dispatch first routes through
+/// the centralized op-handler.
+
+masm.loadPtr(frame.addressOfInterpreterICEntry(), ICStubReg);
+masm.loadPtr(Address(ICStubReg, ICEntry::offsetOfFirstStub()), ICStubReg);
+
+/// The indirect call. Many IC dispatches will come through this register.
+masm.call(Address(ICStubReg, ICStub::offsetOfStubCode())).offset();
+```
+
+This is where the utility of guarded-devirtualization could be useful.
+Empirically, we know that IC stub calls follow a remarkably strong Pareto
+distribution. For e.g, 90% of the dynamic calls are given by the top three
+stubs patterns for a given JS operation. If the branch target prediction is
+so poor for the indirect jump, what if we preceded it with a series of 
+explicit guards for common stubs and predictiable, direct jumps?
+
+
+```asm
+; Setup the IC call in the op-code handler for Add.
+    mov   rdi, [rbp + frame.interpreterICEntry] 
+    mov   rdi, [rdi + ICEntry.firstStub]
+    call  ICDispatch_Add                          ; direct, rel32 into the image
+
+ICDispatch_Add:
+    ; Addition is Integer addition: (48.6% per profile)
+    lea   r11, [rip + Stub_Add_Int32]
+    cmp   [rdi + ICStub.stubCode], r11
+    je    Stub_Add_Int32                          ; direct jmp
+
+    ; Addition as String concatenation: (36.7% per profiling) 
+    lea   r11, [rip + Stub_Add_Concat]
+    cmp   [rdi + ICStub.stubCode], r11
+    je    Stub_Add_Concat                         ; direct jmp
+    
+    ; Unguarded IC call as the fall-back
+    jmp   [rdi + ICStub.stubCode]                 ; indirect jmp
+```
+
+But how do we know the addresses of common stub codes statically? Typically
+stubs are run-time generated JIT code. Getting the address of a common stub
+requires identifying what that stub is, and where. Thankfully <a href={links.ambermonkey}>AmberMonkey</a>
+makes this much easier. It supplies a set of IC stubs ahead-of-time, and bakes
+them into the static image of the engine at compile time. 
+
+Initially GD showed promise on some <a
+href={links.microbenchmarks}>microbenchmarks</a>. However, the improvements
+barely nudged <a href={links.speedometer_results}>Speedometer</a>. This idea
+might get parked for a little while I chase bigger fish.
+
+---
+
+[1] M. Anton Ertl and David Gregg. <a href={links.branch_prediction_paper}>Optimizing Indirect Branch Prediction Accuracy in Virtual Machine Interpreters</a>. PLDI 2003, pp. 278–288. Section 3, “Interpreters and BTBs.”
