@@ -1,158 +1,230 @@
 ---
 title: "Luamura Part I: Projecting Native Functions from Lua's VM"
-publish: false
+publish: true
 publishDate: 2026-11-11
 description: "An Ad-Hoc First Futamura Projection of PUC Lua"
 tags: ["compilers", "partial-evaluation"]
 ---
 
 > Execution of dynamically typed languages can approach native speeds with JIT
-  compilation, but at what cost?
+  compilation, but at what cost? 
 
-_Luamura_ is a fork of the [PUC Lua 5.5](links.lua) interpreter intended to explore AOT
-compilation techniques. It imposes two, possibly debilitating constraints:
+_Luamura_, a fork of the [PUC Lua 5.5](links.lua) interpreter, began as a
+weekend project. The objective was to make Lua compile ahead-of-time with as
+small and surgical a diff as possible. AOT compilers have a large design
+space, so we imposed the constraint of _resuing the VM semantics_ to narrow
+our options. But before getting into that, why try to compile a dynamic
+language in the first place?
 
-First, no dynamically allocated/marked executable memory, i.e _no JIT_. For
-a dynamically typed language, this is the equivalent of tying our hands
-behind our back. Why impose such a brutal constraint? Depending on dynamic
-executable memory can limit deployment settings. Targeting the [WASM](links.wasm)
-platform, for instance, prevents guest code from writing native instructions
-into linear memory and executing them. Additionally, JITs have a warmup phase. In long running
-applications warmup is amortized once the JIT reaches a steady state. But in
-short-lived applications, such as [Function-as-a-Service (FaaS)](links.faas), the
-application’s run-time may be shorter than the warmup itself [^1]. Luamura,
-being an AOT compiler, avoids JIT compilation and tiering warmup.
+JIT compilers map data into code at run-time. Depending on such mechanics
+can limit the deployment of a language to environments which (1) allow
+producing code at run-time; (2) tolerate the security risks; and (3) can
+afford a warm-up phase. One environment which contradicts all three is
+[Function-as-a-Service (FaaS)](links.faas) workloads running atop the
+[WASM](links.wasm) platform. Here short-lived functions may complete much
+sooner than the warmup-phase of a JIT compiler, while WASM modules also
+require a static executable [^1]. Luamura, being an AOT compiler, requires
+neither JIT compilation or warmup.
 
-Second, _Luamura_ seeks to minimize the duplication of Lua bytecode
-semantics. Avoiding duplicate sources of truth is a fundamental principle in
-programming, yet JIT compilers often eschew it for pragmatic reasons. JIT
-code provides guarded, specialized execution paths for the guest program,
-cutting corners around the slow, generic routines. Emitting native code for
-specialized paths typically invokes assembly templates, wrapped around a
-[macro-assembler](links.macro_assembler). If a JIT has multiple tiers, it may duplicate operator
-semantics in each one. At one point, V8 juggled [nine different](links.v8_backends)
-(tier,backend) pairs. The authors of Luamura are scared by the subtle and
-stringent intricacies of bytecode semantics. Hence _Luamura_ uses the [First
-Futamura Projection](links.futamura) to specialize the interpreter to a fixed guest program.
-
-## Reifying the Nebulous Futamura Projection
-
-The Futamura-Projections describe some meta-properties of compilers and
-interpreters. The First Futamura-Projection (FFP) describes how one can
-specialize an interpreter to a fixed guest program, producing its compiled
-form. Considering a bytecode language, we
-know the interpreter contains a dispatch loop, with a handler for every
-op-code. An interpreter is fully generic, in that it can correctly execute
-any valid program in the language. In this sense, there is abstraction
-overhead to achieve such generality which is paid in "dispatch overhead".
-Whether a [switch case interpreter](links.switch_dispatch), or a [threaded interpreter](links.threaded_dispatch), some
-amount of control flow overhead to hop from one op-handler to the next is
-necessary while the guest bytecode is treated as unknown at compile time. The first Futamura projection first requires
-that the guest program becomes fixed, static data. Then the projection
-produces a specialized interpreter `I'`, which can only execute that
-particular guest program, and no other.
-
-The mechanics of how the FFP occurs are implementation defined. Compared to
-what we implement here, there are much more sophisticated implementations in
-the wild. [Truffle](links.truffle)
-lets language implementers write interpreters that Graal partially evaluates
-with respect to a fixed guest program, producing specialized machine code.
-The FFP is an instance of partial evaluation.
-Another project is [Weval](links.weval), which implements the FFP as a _generic code
-transformation_, independent of any particular language’s semantics. It
-analyzes the interpreter-to-specialize's CFG and, given the fixed guest
-bytecode input, does all of the abstract interpretation, static analysis and
-dataflow required to transform the interpreter loop into the compiled
+Now back to our design constraint: no duplication of Lua bytecode semantics.
+Avoiding duplicate sources of truth is a fundamental principle in
+programming, yet JIT compilers often eschew it for pragmatic reasons
+(writing backends often uses custom assembly for each tier). If a JIT has
+multiple tiers, it may duplicate operator semantics in each one. At one
+point, V8 juggled [nine different](links.v8_backends) (tier,backend) pairs.
+The authors of Luamura (ok it's just me) are frightened by the subtle and
+stringent intricacies of bytecode semantics, and so use the [First Futamura
+Projection](links.futamura) to specialize the interpreter to a fixed guest
 program.
+
+## The Nebulous Futamura Projections
+
+The Futamura-Projections relate some self-referential meta-properties for
+deriving compilers, interpreters and binaries from an existing interpreter.
+The First Futamura-Projection (FFP) describes how one can specialize an
+interpreter to a fixed guest program, resulting in an interpreter that
+can run only a single program without dispatch overhead. In other words, a
+compiled binary. 
+
+Consider a standard bytecode language. The interpreter contains a dispatch
+loop with a handler for every bytecode type. This interpreter is fully
+generic, in that any valid program in the language can be correctly
+executed. In this sense, there is abstraction overhead to achieve
+generality, specifically "dispatch overhead". Whether a [switch case
+interpreter](links.switch_dispatch), or a [threaded
+interpreter](links.threaded_dispatch), some amount of control flow overhead
+is necessary to get from one op-code to the next.
+
+By contrast, in a compiled language, the control flow between non-branching
+instructions can be statically determined. To implement our First Futamura
+projection, we require that the guest program becomes fixed, static data.
+From there we can etch out a CFG by analyzing which bytecodes can branch and
+where, identifying the leaders for our basic blocks, their predecessors and
+successors. From there, all is needed is a way to eliminate the dispatch
+overhead between a linear sequence of op-handlers.
+
+The specific mechanics of how the FFP occurs slightly nebulous. Compared to
+what we implement here, there are much more sophisticated implementations in
+the wild. [Truffle](links.truffle) lets language implementers write
+interpreters that Graal partially evaluates with respect to a fixed guest
+program, producing specialized machine code. The FFP is an instance of
+partial evaluation. Another project is [Weval](links.weval), which
+implements the FFP as a _generic code transformation_, independent of any
+particular language’s semantics. It analyzes the
+interpreter-to-specialize's CFG and, given the fixed guest bytecode input,
+does all of the abstract interpretation, static analysis and dataflow
+required to transform the interpreter loop into the compiled program.
 
 Compared to these techniques, Luamura is quite crude. Our only goal is to
 elide the interpreter dispatch between op-codes. It is an ad-hoc FFP, which
-is to say it is entirely coupled to Lua's semantics, and uses a small compiler and runtime, plus interpreter changes
-(and LLVM as a dependency), to get up and running.
+is to say it is entirely coupled to Lua's semantics, and uses a small
+compiler and runtime, plus interpreter changes (and LLVM as a dependency),
+to get up and running.
 
-The basic idea is as follows. We link a small program against `liblua`,
-giving us access to the entire run-time library through the C-ABI. The program
-accepts a Lua module, parses each Lua function into bytecode, and lifts it
-into a set of [CFGs](links.cfg), which are then handed to our code-generator.
+## Mechanics of Luamura
 
-Nominally the CFG reflects the control flow of the guest program. But seeing
-as each basic-block is comprised of Lua bytecode instructions, compiling a
-binary which invoked the interpreter for each op, in each basic block, would
-merely replace the inter-op dispatch overhead with LLVM function calls. That
-is, assuming each call is not inlined. By looping over each opcode in a
-basic block, and emitting a call to the op-handler[^2] tagged with the
-`alwaysinline` attribute, two adjacent op-codes fall through into one another
-without a control structure.
+The basic idea is as follows. We start by linking a small program against
+`liblua`. This gives us access to the entire run-time so we don't need to
+worry about garbage collection, implementing co-routines or any frontend
+parsing or lexing of Lua. By passing a Lua module through the linked
+frontend passes we turn each Lua function into bytecode. This is the point
+at which our "compiler" starts. 
+
+For a given funciton, we can take the bytecode and lifts it into a
+[CFG](links.cfg). The branches in the CFG represents the _irreducible_
+control flow of the guest program. Each basic block is still composed of
+generic Lua bytecode. Therefore we need a way to compile a Basic Block
+such that the sequence of bytecodes are executed without any dispatch
+overhead between them.
+
+If we had LLVM emit a basic-block that simply called the interpreters
+handler for each op, our program would consist of a sequence of function
+calls into the Lua runtime. This merely shifts the dispatch overhead from
+the interpreter loop into our compiled blocks.
+
+```
+block0:
+    call luaV_OP_LOADI(A=0, sBx=1)
+    call luaV_OP_LOADI(A=1, sBx=4)
+    call luaV_OP_MOVE(A=2, B=0)
+    call luaV_OP_RETURN1(A=2)
+```
+
+Perhaps risking an anticlimax, this seemingly pointless method of emitting
+an LLVM call for each op-handler is 99% of the way to our projection.
+Consider what happens if call is forcibly in-lined. That's right, by looping
+over each opcode in a basic block, and emitting a call to the op-handler
+tagged with the `alwaysinline` attribute, two adjacent op-codes fall through
+into one another without any interleaving control.
 
 ```cpp
 llvm::Value* BlockCompiler::compile(const CFG::Block& block) {
     llvm::Value* next = nullptr;
-    for (PC pc = block.start; pc < block.end; pc++)
-        next = projectOpHandler(pc);
+    for (PC pc = block.start; pc < block.end; pc++) {
+        Instruction i = proto.code[pc];
+        auto* call = builder.CreateCall(
+            module.getOrInsertFunction(std::string("luaV_OP_") +
+                                           opnames[GET_OPCODE(i)],
+                                       op_handler_ty),
+            {frame.L, frame.ci, frame.pc, builder.getInt32(i),
+             builder.getInt32(ni)});
+        call->addFnAttr(llvm::Attribute::AlwaysInline);
+        next = call;
+    }
     return next;
-}
-
-llvm::Value* BlockCompiler::projectOpHandler(PC pc) {
-    Instruction i = proto.code[pc];
-    // the jump after i, if i is a test
-    Instruction ni = pc + 1 < proto.sizecode ? proto.code[pc + 1] : 0;
-    // the interpreter's pc after fetching i
-    builder.CreateStore(builder.CreateConstInBoundsGEP1_32(
-                            instruction_ty, frame.code, pc + 1),
-                        frame.pc);
-    auto* call = builder.CreateCall(
-        module.getOrInsertFunction(std::string("luaV_OP_") +
-                                       opnames[GET_OPCODE(i)],
-                                   op_handler_ty),
-        {frame.L, frame.ci, frame.pc, builder.getInt32(i),
-         builder.getInt32(ni)});
-    call->addFnAttr(llvm::Attribute::AlwaysInline);
-    return call;
 }
 ```
 
 *Figure 1: Luamura's block compiler emits an always-inline opcode-handler call
 for each bytecode instruction ([source](links.block_compiler)).*
 
-This projection is effectively the simplest form of a type-generic [Baseline
-Compilation](links.baseline). We trade the factored simplicity of a small interpreter, for a
-rather large binary where every op's generic handler is inlined and
-duplicated for every one of its invocations in the guest program. An
-explosion in code size can be expected. Comparing a compiled function to its
-interpreter counterpart, the former effectively un-factors the de-duplicated
-work of the latter. While abstracting duplicated work is the natural instinct
-of any programmer, for a compiler, abstraction simply appears as indirection.
-CPUs like to chew through straight line sequences of code, so a compiler often
-busies itself undoing the higher-level constructs of the language (unrolling
-loops, inlining functions, devirtualizing calls, etc.)
+### Minor Implementation Challenges
 
-Does Luamura's exchange of dispatch overhead for binary size turn out to be
-profitable? It turns out, yes, at least for the
-relatively small programs in the [AWFY](links.awfy) benchmark.
+There are two slight implementation challenge standing in the way of this
+approach. First, the Lua interpreter is a threaded-dispatch interpreter.
+Each op-handler is a label, not a function. In a linked library, these goto
+labels are not visibile, and therefore we have no op-handler function to
+call and forcibly inline.
+
+Thankfully Lua VM uses macros which masquerade their threaded
+switch-statement interpreter to appeaar like a standard switch case
+interpreeter. The `vmswitch`, `vmcase` and `vmbreak` macros expand into a
+threaded-dispatch, or computed goto interpreter. These macros make it easy
+to to refactor the interpreter loop. A second set of macros, turned on with
+the `-DLUAMURA` compiler flag, turns each op-handler a visible function.
+
+```c
+// default threaded-dispatch macros
+#define vmdispatch(x) goto *disptab[x]
+#define vmcase(op)    L_##op:
+#define vmbreak       vmfetch(); vmdispatch(GET_OPCODE(i))
+
+#if defined(LUAMURA)
+// laumura overriden macros to make each call a function
+#undef vmcase
+#undef vmbreak
+#define vmcase(op)    CallInfo *luaV_##op()
+#define vmbreak       return (*next = pc, NULL)
+#endif
+
+```
+
+Second, even now that we've got each handler as a visible function, linking
+comes after compilation, so our attribute to "always inline" a handler
+doesn't help much if the compiler can't see what it's inlining. To solve
+this we bootstrap `lvm.c` by compiling it to LLVM bitcode, embedding it in
+the compiler, and linking the definitions into each generated module.
+Excluding the minor refactors to liblua, Luamura comes out to 742 lines,
+and could be much shorter if code-golfed.
+
+```git
+src/luamura/lm_c.cpp                   |  112 ++++
+src/luamura/lm_cfg.cpp                 |  122 ++++
+src/luamura/lm_cfg.h                   |   51 ++
+src/luamura/lm_codegen.cpp             |  203 +++++++
+src/luamura/lm_codegen.h               |   93 +++
+src/luamura/lm_lua.h                   |   18 +
+src/luamura/lm_rt.c                    |  120 ++++
+src/luamura/luamura.h                  |   23 +
+```
+
+This projection is effectively the simplest form of a type-generic [Baseline
+Compilation](links.baseline). We trade the factored simplicity of a small
+interpreter, for a rather large binary where every op's generic handler is
+inlined and duplicated for every one of its invocations in the guest
+program. An growth in code size can certainly be expected. Comparing a
+compiled function to its interpreter counterpart, the former effectively
+un-factors the de-duplicated work of the latter. While abstracting
+duplicated work is the natural instinct of any programmer, for a compiler,
+abstraction simply appears as indirection. CPUs like to chew through
+straight line sequences of code, so a compiler often busies itself undoing
+the higher-level constructs of the language (unrolling loops, inlining
+functions, devirtualizing calls, etc.)
 
 ## Benchmarking Luamura
 
+Does Luamura's exchange of dispatch overhead for binary size turn out to be
+profitable? It turns out, yes, at least for the relatively small programs in
+the [AWFY](links.awfy) benchmark.
+
 | Benchmark | Lua (s) | Luamura (s) | Speedup | Lua (KB) | Luamura (KB) | Size increase |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Bounce | 0.8968 | 0.6929 | 1.29× | N/A | N/A | N/A |
-| CD | 2.0486 | 1.8946 | 1.08× | N/A | N/A | N/A |
-| DeltaBlue | 0.6643 | 0.5932 | 1.12× | N/A | N/A | N/A |
-| Havlak | 5.3710 | 5.2363 | 1.03× | N/A | N/A | N/A |
-| Json | 0.8337 | 0.7955 | 1.05× | N/A | N/A | N/A |
-| List | 0.6362 | 0.4968 | 1.28× | N/A | N/A | N/A |
-| Mandelbrot | 0.5281 | 0.3631 | 1.45× | N/A | N/A | N/A |
-| NBody | 0.6402 | 0.4605 | 1.39× | N/A | N/A | N/A |
-| Permute | 0.7977 | 0.7204 | 1.11× | N/A | N/A | N/A |
-| Queens | 0.4673 | 0.4086 | 1.14× | N/A | N/A | N/A |
-| Richards | 3.0171 | 2.7211 | 1.11× | N/A | N/A | N/A |
-| Sieve | 0.6137 | 0.3718 | 1.65× | N/A | N/A | N/A |
-| Storage | 1.4100 | 1.2773 | 1.10× | N/A | N/A | N/A |
-| Towers | 0.9097 | 0.8556 | 1.06× | N/A | N/A | N/A |
-| **Geometric mean** | | | **1.19×** | N/A | N/A | N/A |
+| Bounce | 0.8968 | 0.6929 | 1.29× | 330 | 514 | 1.56× |
+| CD | 2.0486 | 1.8946 | 1.08× | 353 | 706 | 2.00× |
+| DeltaBlue | 0.6643 | 0.5932 | 1.12× | 347 | 690 | 1.99× |
+| Havlak | 5.3710 | 5.2363 | 1.03× | 345 | 658 | 1.91× |
+| Json | 0.8337 | 0.7955 | 1.05× | 372 | 690 | 1.85× |
+| List | 0.6362 | 0.4968 | 1.28× | 315 | 362 | 1.15× |
+| Mandelbrot | 0.5281 | 0.3631 | 1.45× | 319 | 374 | 1.17× |
+| NBody | 0.6402 | 0.4605 | 1.39× | 318 | 406 | 1.28× |
+| Permute | 0.7977 | 0.7204 | 1.11× | 314 | 358 | 1.14× |
+| Queens | 0.4673 | 0.4086 | 1.14× | 315 | 362 | 1.15× |
+| Richards | 3.0171 | 2.7211 | 1.11× | 326 | 466 | 1.43× |
+| Sieve | 0.6137 | 0.3718 | 1.65× | 314 | 354 | 1.13× |
+| Storage | 1.4100 | 1.2773 | 1.10× | 329 | 502 | 1.53× |
+| Towers | 0.9097 | 0.8556 | 1.06× | 315 | 366 | 1.16× |
+| **Geometric mean** | | | **1.19×** | | | **1.42×** |
 
-Median of seven runs; compilation excluded. Speedup is Lua time divided by
-Luamura time. See the [benchmark methodology](links.benchmarks)
-for details.
 
 ## Limitations and Future Directions
 
@@ -210,12 +282,3 @@ fast-paths.
     (WebAssembly partial-evaluator) designed to provide fast AOT performance of
     JavaScript.
 
-
-[^2]: The Lua VM contains what appears to be a switch-statement interpreter
-    over the current bytecode Op, with a case for each handler. The `vmswitch`,
-    `vmcase` and `vmbreak` macros expand into a threaded-dispatch, or computed
-    goto interpreter. In either case, the op-handlers are not visible symbols.
-    Our projection requires emitting an "alwaysinline" annotated function call, so
-    we have to refactor the interpreter loop. A second set of macros, turned on
-    with the `-DLUAMURA` compiler flag, makes each op-handler a visible
-    function.

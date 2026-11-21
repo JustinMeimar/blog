@@ -62,14 +62,12 @@ const {
 
 const floatClass = float ? `float-${float}` : '';
 const sizeClass = size ? `img-${size}` : '';
-const darkModeAttr = darkMode ? `data-theme-adapt="${darkMode}"` : '';
-
 const baseClasses = [floatClass, sizeClass, className].filter(Boolean).join(' ');
 ---
 
 <figure class={baseClasses} data-image-lightbox={zoomable ? "" : undefined}>
   <div data-image-lightbox-media>
-    <img src={src} alt={alt} data-theme={darkSrc ? "light-only" : undefined} {...darkModeAttr && { 'data-theme-adapt': darkMode }} />
+    <img src={src} alt={alt} data-theme={darkSrc ? "light-only" : undefined} data-theme-adapt={darkMode} />
     {darkSrc && <img src={darkSrc} alt={alt} data-theme="dark-only" />}
   </div>
   {caption && <figcaption>{caption}</figcaption>}
