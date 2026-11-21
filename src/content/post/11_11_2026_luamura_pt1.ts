@@ -1,5 +1,6 @@
 export const links = {
-  block_compiler: "https://github.com/JustinMeimar/luamura/blob/eea630f2c391c1233036eeec7544662381383a39/src/luamura/lm_codegen.cpp#L34-L57",
+  luamura: "https://github.com/JustinMeimar/luamura/tree/pt1",
+  block_compiler: "https://github.com/JustinMeimar/luamura/blob/pt1/src/luamura/lm_codegen.cpp#L34-L57",
   lua: "https://www.lua.org/manual/5.5/",
   wasm: "https://webassembly.org/docs/security/",
   faas: "https://aws.amazon.com/serverless/faqs/#What_is_Function_as_a_Service_.28FaaS.29.3F",
@@ -13,7 +14,7 @@ export const links = {
   cfg: "https://clang.llvm.org/docs/InternalsManual.html#the-cfg-class",
   baseline: "https://v8.dev/blog/sparkplug",
   awfy: "https://github.com/smarr/are-we-fast-yet",
-  benchmarks: "https://github.com/JustinMeimar/luamura/blob/main/benchmarks/README.md",
+  benchmarks: "https://github.com/JustinMeimar/luamura/blob/pt1/benchmarks/README.md",
   speculation: "https://webkit.org/blog/10308/speculation-in-javascriptcore/",
   ssa: "https://llvm.org/docs/LangRef.html#abstract",
 };

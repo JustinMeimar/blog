@@ -9,7 +9,7 @@ tags: ["compilers", "partial-evaluation"]
 > Execution of dynamically typed languages can approach native speeds with JIT
   compilation, but at what cost? 
 
-_Luamura_, a fork of the [PUC Lua 5.5](links.lua) interpreter, began as a
+[_Luamura_](links.luamura), a fork of the [PUC Lua 5.5](links.lua) interpreter, began as a
 weekend project. The objective was to make Lua compile ahead-of-time with as
 small and surgical a diff as possible. AOT compilers have a large design
 space, so we imposed the constraint of _reusing the VM semantics_ to narrow
@@ -19,19 +19,20 @@ language in the first place?
 JIT compilers map data into code at runtime. Depending on such mechanics
 can limit the deployment of a language to environments which (1) allow
 producing code at runtime; (2) tolerate the security risks; and (3) can
-afford a warm-up phase. One environment which contradicts all three is
-[Function-as-a-Service (FaaS)](links.faas) workloads running atop the
-[WASM](links.wasm) platform. Here short-lived functions may complete
-before a JIT compiler finishes warming up, while WASM modules also
-require a static executable [^1]. Luamura, being an AOT compiler, requires
-neither JIT compilation nor warmup.
+afford a warm-up phase. These constraints matter for short-lived
+[Function-as-a-Service (FaaS)](links.faas) workloads running inside
+[WebAssembly](links.wasm) sandboxes. Functions may finish before a
+guest-language JIT warms up, and modules cannot directly execute code
+written into linear memory [^1]. Luamura avoids guest-language JIT
+compilation and its warmup.
 
 Now back to our design constraint: no duplication of Lua bytecode semantics.
 Avoiding duplicate sources of truth is a fundamental principle in
 programming, yet JIT compilers often eschew it for pragmatic reasons
 (writing backends often uses custom assembly for each tier). If a JIT has
-multiple tiers, it may duplicate operator semantics in each one. At one
-point, V8 juggled [nine different](links.v8_backends) (tier,backend) pairs.
+multiple tiers, it may duplicate operator semantics in each one. V8's
+Crankshaft required architecture-specific code for
+[nine supported platforms](links.v8_backends).
 The authors of Luamura (OK, it's just me) are frightened by the subtle and
 stringent intricacies of bytecode semantics, and so use the [first Futamura
 projection](links.futamura) to specialize the interpreter to a fixed guest
@@ -39,12 +40,9 @@ program.
 
 ## The Nebulous Futamura Projections
 
-The Futamura projections relate some self-referential meta-properties for
-deriving compilers, interpreters and binaries from an existing interpreter.
-The first Futamura projection (FFP) describes how one can specialize an
-interpreter to a fixed guest program, resulting in an interpreter that
-can run only a single program without dispatch overhead. In other words, a
-compiled binary. 
+The [Futamura projections](links.futamura) describe how partial evaluation can
+derive compiled programs, compilers, and compiler generators from an interpreter. The first
+specializes an interpreter to a fixed program.
 
 Consider a standard bytecode language. The interpreter contains a dispatch
 loop with a handler for every bytecode type. This interpreter is fully
@@ -99,8 +97,8 @@ overhead between them.
 
 If we had LLVM emit a basic block that simply called the interpreter's
 handler for each op, our program would consist of a sequence of function
-calls into the Lua runtime. This merely shifts the dispatch overhead from
-the interpreter loop into our compiled blocks.
+calls into the Lua runtime. This replaces interpreter dispatch with
+function-call overhead.
 
 ```
 block0:
@@ -112,10 +110,10 @@ block0:
 
 Perhaps risking an anticlimax, this seemingly pointless method of emitting
 an LLVM call for each opcode handler is 99% of the way to our projection.
-Consider what happens if each call is forcibly inlined. That's right, by looping
-over each opcode in a basic block, and emitting a call to the opcode handler
-tagged with the `alwaysinline` attribute, two adjacent opcodes fall through
-into one another without any interleaving control.
+Consider what happens if each call is forcibly inlined. We loop over each
+opcode in a basic block and emit a call to the opcode handler tagged with
+the `alwaysinline` attribute. Inlining removes the calls between adjacent
+handlers, while preserving their internal control flow.
 
 ```cpp
 llvm::Value* BlockCompiler::compile(const CFG::Block& block) {
@@ -126,8 +124,7 @@ llvm::Value* BlockCompiler::compile(const CFG::Block& block) {
             module.getOrInsertFunction(std::string("luaV_OP_") +
                                            opnames[GET_OPCODE(i)],
                                        op_handler_ty),
-            {frame.L, frame.ci, frame.pc, builder.getInt32(i),
-             builder.getInt32(ni)});
+            { /* VM state and opcode operands omitted */ });
         call->addFnAttr(llvm::Attribute::AlwaysInline);
         next = call;
     }
@@ -136,20 +133,19 @@ llvm::Value* BlockCompiler::compile(const CFG::Block& block) {
 ```
 
 *Figure 1: Luamura's block compiler emits an always-inline opcode handler call
-for each bytecode instruction ([source](links.block_compiler)).*
+for each bytecode instruction. Simplified: PC setup and handler arguments
+omitted ([source](links.block_compiler)).*
 
 ### Minor Implementation Challenges
 
 There are two slight implementation challenges standing in the way of this
-approach. First, the Lua interpreter is a threaded-dispatch interpreter.
-Each opcode handler is a label, not a function. In a linked library, these goto
+approach. First, Lua's VM uses macros that support either switch dispatch or
+computed-goto dispatch. In the latter configuration, each opcode handler is
+a label rather than a callable function. In a linked library, these goto
 labels are not visible, and therefore we have no opcode handler function to
 call and forcibly inline.
 
-Thankfully Lua VM uses macros which masquerade their threaded
-switch-statement interpreter to appear like a standard switch case
-interpreter. The `vmswitch`, `vmcase` and `vmbreak` macros expand into a
-threaded-dispatch, or computed goto interpreter. These macros make it easy
+Thankfully, the `vmswitch`, `vmcase` and `vmbreak` macros make it easy
 to refactor the interpreter loop. A second set of macros, turned on with
 the `-DLUAMURA` compiler flag, turns each opcode handler into a visible function.
 
@@ -191,8 +187,8 @@ src/luamura/luamura.h                  |   23 +
 This projection is effectively the simplest form of a type-generic [Baseline
 Compilation](links.baseline). We trade the factored simplicity of a small
 interpreter for a rather large binary where every op's generic handler is
-inlined and duplicated for every one of its invocations in the guest
-program. A growth in code size can certainly be expected. Comparing a
+inlined and duplicated at each corresponding bytecode instruction in the
+guest program. A growth in code size can certainly be expected. Comparing a
 compiled function to its interpreter counterpart, the former effectively
 un-factors the de-duplicated work of the latter. While abstracting
 duplicated work is the natural instinct of any programmer, for a compiler,
@@ -236,8 +232,8 @@ opportunities through instrumenting lower tiers during warmup phases, then,
 speculatively, compiling fast paths for those assumptions. An AOT compiler
 shifts the source of speculation to compile time. Techniques for predicting
 the types of values at a particular program point include
-profiling, type-based alias analysis, or hybrid type-inference. For Luamura,
-we could pursue one or several of these techniques to improve performance.
+profiling and static type inference. For Luamura, we could pursue one or
+both of these techniques to improve performance.
 
 Code size remains a concern for any large applications. If Luamura starts generating
 specialized hot paths, the generic handlers could remain out of line as
@@ -259,9 +255,8 @@ are stored in stack slots. To get near-native arithmetic expression performance 
 promote values off the stack and into native registers. This ultimately
 leads down the road of modelling side effects. At any reconvergence point
 between a fast path and a generic path, both paths must represent the same
-observable VM state. Lua does have some self-reflective metamethod properties
-which can poison naive assumptions about purity, similar, but thankfully to
-a lesser degree, to the perils of JavaScript.
+observable VM state. Lua metamethods can invoke user code, complicating
+assumptions about side effects.
 
 The first thing Luamura might pursue is lifting the bytecode into [SSA](links.ssa).
 From there we can consider modelling side effects, picking points to split
