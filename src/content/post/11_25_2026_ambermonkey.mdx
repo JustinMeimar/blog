@@ -1,0 +1,126 @@
+---
+title: "AOT SpiderMonkey Part II: AmberMonkey"
+publish: false
+publishDate: 2026-11-25
+description: ""
+tags: ["cpp", "jit", "spidermonkey"]
+---
+
+There are many reasons not to compile a dynamically typed language like
+JavaScript. The lack of static types and the capability for run-time
+reflection are two particularly thorny properties. All sensibilities point
+towards JIT compilation, a technique which adapts to run-time properties.
+That being said, there are certain environments where JIT compilation is
+untenible. Settings with an elevated security posture are one such example.
+That puts some seemingly crippling constraints on our design space. How can
+we execute JavaScript performantly without a JIT?
+
+Thankfully there is an established body of research which gives us
+some good starting points. The AOT JavaScript paper by Serrano [1] uses a
+prior that in practice, most functions are monomorphic. Using some hybrid
+type inference and range analysis, they are able to produce a "most likely"
+specialization for each function. A specialized function is dispatched to
+specualtively, and retains guards to bail-out to the generic function when
+the type profile, or other invariants are violated.
+
+The practice of _anticipating_ specializations through some best-effort
+compile time analysis is the defacto technique for AOT compilers. Static
+Basic Block versionoing [2] performs some interesting specialization at the
+Basic-Block level, removing redundant type checks. The nacent NightMonkey
+[3] project by Chris Fallin takes a highly flexible approach wherein the
+type hints seeding the compiler may be dervied from static analysis, source
+level type hints (think typescript/mypy), or other sources.
+
+There is, however, an assumption all of these approaches share which
+severely limits their applicability to the execution of JavaScript _within a
+browser_. That is, the engine running in a browser _does not have a fixed
+input program_. Rather, it receives a more-or-less unpredictable sequence of
+scripts, at runtime, guided by the users browsing behaviour. We saw in [part
+1] that bootstrapping common JIT artifacts is possible with a slight change
+in code-representation. Yet moving beyond determinsitic arttifacts, to guest
+workloads which support the majority of execution, what guest functions
+should we provide? Prima face, AOT compilation for a deployed engine binary
+seems hopeless. We can not expect any significant recurrence of guest
+functions, since each runs it's own idiosyncratic scripts. [^1]
+
+## JIT Compilation Granularity
+
+The design of a JIT compiler may rest upon one, or several, granularaties
+of guest-program compilation. In descending order:
+
+- _Traces_: A trace dispenses with the control-flow boundaries, like
+  functions and loops cleanly delimited by the guest language, and instead,
+  seeks to find a linear path through the control flow graph which is hot,
+  and has a stable type-profile. This path can cut across function
+  boundaries, and some CFG mutation is required to handle deoptimziations
+  from a trace. TraceMonkey [4] and LuaJIT are examples of tracing JITs.
+
+- _Functions_: A template, or method JIT, compiles an entire function at a
+  time. Global analyses like LICM, GVN, etc, benefit from a larger program
+  surface. The highest optimization tiers in a JIT, like [Ion](CITE) in
+  SpiderMonkey and [TurboFan]() in V8 will commonly consider the entire
+  function, while Baseline tiers also commonly
+
+- _Basic Block_: The seminal JITs architecture which compiles at the basic
+  block level is Basic-Block-Versioning (BBV). [CITE Boisvert]. It is most
+  useful as a Baseline JIT. The AOT version of this architecture is
+  static-BBV.
+
+- _Bytecode_: Ultimately polymorphism bubbles down to the operations of a
+  bytecode lanauge, like JavaScript, Python or Ruby. The JIT architecture
+  which specializes operation-level polymorphism is commonly called _Inline
+  Caching_. SpiderMonkey uses Inline Caching to emit specialized "stubs"
+  lazily for every polymorphic variant flowing through an operation. Each
+  site has a linked-list of stubs which hop between one another upon an
+  operation invocation, seeking the first stub which passes it's guards.
+
+With these granularities in mind, we can acheive a refined perspective on
+whether guest-compiled JIT code has a "cross-workload recurrence" can be
+expected. At the trace and function level, the bespoke and idiosyncractic
+properties of a guest program have more space to distinugish themselves,
+likely sending recurrence to near zero. On the opposite side of the
+spectrum, bytecode level specialization is myopic enough not to care what
+kind of function it occurs in. An integer addition specialization has no
+preference whether it's running in function `foo` or workload A, or `bar` of
+workload B. It is in Inline Caching that we place our hope for AOT
+performance.
+ 
+## Inline Caching and SpiderMonkey's CacheIR
+
+- Inline caching yields X% speedup over interpretation [CITE]
+
+- The hope for AOT is that a subset of common stubs dominates the
+  dynamic execution distribution strongly enough to justify inclusion
+  into the binary.
+
+- At first glance, such a "finite corpus" seems implausible. There may
+  be millions of distinct IC sites, each specializing their operator
+  to site-local data.
+
+- For example, consider an operation like `a + 4`, where the type of `a`
+  is unknown. If we encounter `a` to be an integer, we might emit a stub
+  which, in it's assembly, contains a integer immedaite `3`. Afterall, the
+  three is a constant. There is no way for it to change. It makes sense
+  to burn this data directly into the stub body.
+
+- What the authors of SpiderMonkey prudently realized is that there is a
+  good reason to separate code from data, and rather than burn in site-local
+  constants, store them in site-local data buffersr access them indirectly
+  through stable indicies in the stub body. 
+
+
+[1] TODO: Serrano AOT paper
+[2] TODO: Mecon SBBV paper
+[3] TODO: NightMonkey citation
+[4] TODO: TraceMonkey citation
+[5] TODO: LuaJIT citation
+
+
+[^1] An inital hypothesis is that there might exist common
+infrastructure-type code that is between sites across the web. For example,
+a react router library. It turns out that this kind of code is not
+load-bearing in terms of performance. Moreover, shared infrastructure gets
+mangled through different bundlers and versions, making it extremely
+difficult to reconcile which scripts are equivalent. 
+
+

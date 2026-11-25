@@ -10,11 +10,14 @@ tags: ["compilers", "partial-evaluation"]
   compilation, but at what cost? 
 
 [_Luamura_](links.luamura) is a fork of the [PUC Lua 5.5](links.lua)
-interpreter that began as a weekend project: to compile Lua ahead-of-time
+interpreter that began as a weekend project to compile Lua ahead-of-time
 (AOT). Implementing an AOT compiler from scratch presents a large design
-space. Imposing some constraints will help widdle this space down for us,
-such as _reusing Lua's VM existing semantics_. But before getting into that,
-why even try to compile a dynamic language in the first place?
+space. Despite Lua being on the simpler end of the language spectrum, I
+wanted to avoid re-implementation. Besides, constraints are often useful and
+will help widdle down the design space for us. Therefore, the aim is to
+build an AOT compiler which _reuses the Lua VM's semantics_. But before
+getting into that, why even try to compile a dynamic language in the first
+place?
 
 JIT compilers map data into code at runtime. Depending on data-execution can
 limit the deployment of a program to environments which (1) allow producing
@@ -22,10 +25,8 @@ code at runtime; (2) tolerate the security risks associated with JIT; and
 (3) can afford a warm-up phase. A good counter-example for where these
 conditions fail-to-arise is in short-lived [Function-as-a-Service
 (FaaS)](links.faas) workloads running inside [WebAssembly](links.wasm)
-sandboxes. Here functions often finish before a guest-language JIT could
-have the opportunity to warm up, while modules cannot directly execute code
-written into linear memory [^1]. _Luamura_ being an AOT compiler avoids both
-the permission-flipping of JIT compilation and its warmup.
+sandboxes [^1]. Here functions often finish before a JIT could warm up, and even
+if they could, WASM modules cannot directly execute data at runtime.
 
 Now back to our design constraint: no duplication of Lua bytecode semantics.
 Maintaining a single source of truth is a fundamental principle in
@@ -35,9 +36,9 @@ multiple tiers, it may duplicate operator semantics in each one. V8's
 Crankshaft required architecture-specific code for [nine supported
 platforms](links.v8_backends) at one time. The authors of Luamura (OK, it's
 just me) are frightened by the subtle and stringent intricacies of bytecode
-semantics, multiplied for every architecture backend. Therefore we use the
-[first Futamura projection](links.futamura) to specialize the interpreter to
-a fixed guest program.
+semantics. The [first Futamura projection](links.futamura) will be the
+technique we used to derive a compiled program from the existing Lua
+interpreter.
 
 ## Compiling an Interpreted Language?
 
@@ -51,26 +52,32 @@ execution environment which isn't on-the-fly, like a web-browser,
 "compiling" a traditionally interpreted language like JavaScript or Lua can
 make sense [^2].
 
-To understand what dispatch overhead erasue entails, consider a standard
-bytecode interpreter. It contains a dispatch loops with handlers for each
-bytecode kind. An interpreter is fully generic in that it can receive _any_
-program at-runtime, and execute it. In this sense, there must be an
+To understand what removing the dispatch overhead entails, consider a
+standard bytecode interpreter. It contains a dispatch loops with handlers
+for each bytecode kind. An interpreter is fully generic in that it can
+execute _any_ program at-runtime. From this point, there must be an
 abstraction overhead interpreters pay to achieve such generality. This is
 commonly known as "dispatch overhead". Whether a [switch case
 interpreter](links.switch_dispatch), or a [threaded
 interpreter](links.threaded_dispatch), some amount of control flow overhead
 is necessary to get from one opcode to the next.
 
-To implement _Luamura_ and eliminate the dispatch overhead then we require
-that the guest Lua program's bytecode to become fixed, static data. In this
-"compilation step" we can build a CFG by analyzing which bytecodes branch
-and where. This identifies the leader statements for basic blocks, their
-predecessors, and successors. By etching a CFG into a binary we can
-represent the "guest programs control flow", without any of that interpreter
-dispatch overhead. The challenge arises with compiling each basic block. If
-we lowered blocks by calling each statements op-handlers, this merely shifts
-around the overhead. We need some way of basic block of Lua bytecode without
-any interleaving overhead.
+If the bytecode is fixed we can imagine "unrolling" the interpreter loop
+along allkthe paths it might take. Stamping out a copy of the handler for
+each bytecode will etch out a CFG. Unlike a binary compiled from a
+statically typed language, however, the blocks in our CFG will be composed
+of coarse, generic VM routines rather than more-or-less direct
+transliteration.
+
+```c
+// p.x in Lua: GETFIELD (inlined)
+if (!ttistable(p)) luaV_finishget(...);   // not a table
+slot = luaH_getshortstr(hvalue(p), "x");  // hash lookup
+if (isempty(slot)) luaV_finishget(...);   // __index fallback
+
+// p->x in C
+movsd  xmm0, [rdi]
+```
 
 ## The First Futamura Projection
 
@@ -101,10 +108,10 @@ to get up and running.
 
 The basic idea is as follows. We start by linking a small program against
 `liblua`. This gives us access to the entire runtime so we don't need to
-worry about garbage collection, implementing coroutines or any frontend
-parsing or lexing of Lua. By passing a Lua module through the linked
-frontend passes we turn each Lua function into bytecode. This is the point
-at which our "compiler" starts. 
+worry about garbage collection, implementing coroutines, lexing or parsing.
+By passing a Lua module through the linked parsing functions we turn each
+Lua function into bytecode. This is the point at which our "compiler"
+starts.
 
 For a given function, we can take the bytecode and lift it into a
 [CFG](links.cfg). The branches in the CFG represent the _irreducible_
@@ -291,9 +298,10 @@ interpreter, and a bunch of analysis passes to prove what VM state is safe
 to specialize into fast paths.
 
 
-[^1]: For a prototypical project targeting this space, see the
-[Weval](links.weval) (WebAssembly partial-evaluator) designed to provide
-fast AOT performance of JavaScript.
+[^1]: A prototypical compiler in this space is [Weval](links.weval)
+(WebAssembly partial-evaluator) designed to provide fast AOT performance of
+JavaScript. _Luamura_ being an AOT compiler avoids both the
+permission-flipping of JIT compilation and its warmup.
 
 [^2]: An interpreter receives a guest program and executes it within a
 single process. If we're talking about a JavaScript engine within a browser,
