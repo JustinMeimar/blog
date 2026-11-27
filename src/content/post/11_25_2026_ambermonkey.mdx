@@ -6,6 +6,8 @@ description: "Providing SpiderMonkeys Baseline tier AOT"
 tags: ["cpp", "jit", "spidermonkey"]
 ---
 
+import BlogImage from "../../components/BlogImage.astro";
+
 Lets start by saying there are many reasons _not_ to compile a dynamically
 typed language like JavaScript. The lack of static types and the capability
 for run-time reflection are two particularly thorny properties. All
@@ -145,9 +147,12 @@ through stable indicies in the stub body. This enables _stub sharing_. The
 inital impetus was likely reducing JIT memory. It has the coincidental
 effect of making AOT ICs possible.
 
-// TODO: Put in figure 1 from the AM paper -- stub sharing.
-// All figures should use a consistent sub-figure description. Do _NOT_
-// be verbose in this desc. whatsover. Conise, oneline max.
+<BlogImage
+  src="/images/ambermonkey_part2/ic-stub-sharing.svg"
+  alt="Two property-access sites share a fixed-slot CacheIR body while retaining their own shapes, offsets, and fallback chains."
+  caption="Shared stub instructions, site-local shapes and offsets."
+  darkMode="invert"
+/>
 
 ### Inline Cache Stub Distirbutions
 
@@ -157,9 +162,12 @@ and for stubs of a particular IC kind. So much of engineering just comes
 down to finding and splitting 80/20 rules. In this case it's more like a
 95/5 rule.
 
-// TODO: We don't have an intra-workload distirbution figure in the paper.
-// we should probably create one for Octane perhaps. Actually, we do have
-// one from the 680 report. Hmm. Maybe we do in the figures dir actually.
+<BlogImage
+  src="/images/ambermonkey_part2/intra-workload-distribution.png"
+  alt="Cumulative IC attachment frequency by ranked stub body, showing the median and range across eight sites."
+  caption="IC attachment concentration across eight sites, with stubs ranked by frequency."
+  darkMode="invert"
+/>
 
 In the paper we setup a preliminary experiment to motivate the expectation
 of cross-workload recurrence. We took 32 common sites from the tp6 pageload
@@ -170,9 +178,19 @@ Our hypothesis was that the stubs which were common across workloads were
 also the most heavily executed. 
 
 
-// TODO: We should include a nice inter-workload figure. Maybe the Jaccard
-// matrix that got excluded? Hmm Lets render a few. There is also the
-// fig 2 (?) in the pape w/ the baseline v.s IC comparison.
+<BlogImage
+  src="/images/ambermonkey_part2/corpus-growth.svg"
+  alt="Static and execution-weighted coverage of held-out IC and Baseline bodies as the training corpus grows."
+  caption="IC and Baseline coverage on eight held-out sites as the training corpus grows."
+  darkMode="invert"
+/>
+
+<BlogImage
+  src="/images/ambermonkey_part2/inter-workload-coverage.png"
+  alt="Eight-site coverage matrix with static coverage below the diagonal, dynamic coverage above it, and body counts on the diagonal."
+  caption="Earlier eight-site experiment: static coverage below, execution-weighted coverage above."
+  darkMode="invert"
+/>
 
 > Roughly 5.1 million IC attachment requests reduce to 1,591 distinct
   guestscript stub bodies.
@@ -191,13 +209,55 @@ environment. If we want to bootstrap our corpus into the engine and use
 stubs in subequent runs, the first thing we need to do is identify and
 exfiltrate all the coupling.
 
-// TODO: We should include figure 3 and figure 4 from the paper here.
-// not sure if i'll use them, but just to see for now.
+<BlogImage
+  src="/images/ambermonkey_part2/runtime-indirection-table.svg"
+  alt="Shared AOT instructions access runtime-specific state through separate Runtime Indirection Tables."
+  caption="Shared AOT code accesses per-runtime state through indirection tables."
+  darkMode="invert"
+/>
+
+<BlogImage
+  src="/images/ambermonkey_part2/aot-image.svg"
+  alt="Packed AOT image containing a manifest, metadata, and compiled code."
+  caption="The packed AOT image locates metadata and code through a binary manifest."
+  darkMode="invert"
+/>
 
 
 ## Results
 
-// TODO: lets include the main results. Figure 5, figure6 and figure 8
+AM-Empty provides the interpreter alone. AM-IC adds IC bodies, and AM adds
+self-hosted function bodies. AM-Oracle uses a workload-specific corpus.
+Performance is relative to interpreter-only execution; error bars show 95%
+confidence intervals across ten independent runs.
+
+<BlogImage
+  src="/images/ambermonkey_part2/speedometer-performance.svg"
+  alt="Per-workload Speedometer 3.1 speedups for AM-Empty, AM-IC, AM, and AM-Oracle over interpreter-only execution."
+  caption="Speedometer 3.1 speedup over interpreter-only execution."
+  darkMode="invert"
+/>
+
+<BlogImage
+  src="/images/ambermonkey_part2/octane-performance.svg"
+  alt="Per-subtest Octane 2.0 speedups for the AOT configurations over interpreter-only execution, on a logarithmic axis."
+  caption="Octane 2.0 speedup over interpreter-only execution; logarithmic scale."
+  darkMode="invert"
+/>
+
+<BlogImage
+  src="/images/ambermonkey_part2/indirection-overhead.svg"
+  alt="Retired instruction overhead of RIT indirection, linker relocations, and value mirroring relative to Baseline code with Ion disabled."
+  caption="Retired instruction overhead of indirection and its optimizations."
+  darkMode="invert"
+/>
+
+<BlogImage
+  src="/images/ambermonkey_part2/executable-memory.svg"
+  alt="Peak content-process executable-code proportional set size during Speedometer, split into shared and private code."
+  caption="Peak executable-code PSS during Speedometer 3.1, split into shared and private code."
+  darkMode="invert"
+/>
 
 ## References
 
