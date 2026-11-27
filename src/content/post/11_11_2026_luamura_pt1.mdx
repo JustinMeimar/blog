@@ -3,7 +3,7 @@ title: "Luamura Part I: Projecting Native Functions from Lua's VM"
 publish: true
 publishDate: 2026-11-11
 description: "An Ad-Hoc First Futamura Projection of PUC Lua"
-tags: ["compilers", "partial-evaluation"]
+tags: ["lua", "partial-evaluation", "wasm"]
 ---
 
 > The Lua VMs encodes the precise bytecode semantics needed for a simple
@@ -230,23 +230,30 @@ Does Luamura's exchange of dispatch overhead for binary size turn out to be
 profitable? It turns out, yes, at least for the relatively small programs in
 the [AWFY](links.awfy) benchmark.
 
-| Benchmark | Lua (s) | Luamura (s) | Speedup | Lua (KB) | Luamura (KB) | Size increase |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Bounce | 0.8968 | 0.6929 | 1.29× | 330 | 514 | 1.56× |
-| CD | 2.0486 | 1.8946 | 1.08× | 353 | 706 | 2.00× |
-| DeltaBlue | 0.6643 | 0.5932 | 1.12× | 347 | 690 | 1.99× |
-| Havlak | 5.3710 | 5.2363 | 1.03× | 345 | 658 | 1.91× |
-| Json | 0.8337 | 0.7955 | 1.05× | 372 | 690 | 1.85× |
-| List | 0.6362 | 0.4968 | 1.28× | 315 | 362 | 1.15× |
-| Mandelbrot | 0.5281 | 0.3631 | 1.45× | 319 | 374 | 1.17× |
-| NBody | 0.6402 | 0.4605 | 1.39× | 318 | 406 | 1.28× |
-| Permute | 0.7977 | 0.7204 | 1.11× | 314 | 358 | 1.14× |
-| Queens | 0.4673 | 0.4086 | 1.14× | 315 | 362 | 1.15× |
-| Richards | 3.0171 | 2.7211 | 1.11× | 326 | 466 | 1.43× |
-| Sieve | 0.6137 | 0.3718 | 1.65× | 314 | 354 | 1.13× |
-| Storage | 1.4100 | 1.2773 | 1.10× | 329 | 502 | 1.53× |
-| Towers | 0.9097 | 0.8556 | 1.06× | 315 | 366 | 1.16× |
-| **Geometric mean** | | | **1.19×** | | | **1.42×** |
+| Benchmark | Lua (s) | Luamura (s) | Speedup | Lua (KB) | Luamura (KB) | Size increase | Wasm Lua (s / KiB) | Wasm Luamura (s / KiB) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Bounce | 0.8968 | 0.6929 | 1.29× | 330 | 514 | 1.56× | 1.8055 / 345 | 1.1630 / 520 |
+| CD | 2.0486 | 1.8946 | 1.08× | 353 | 706 | 2.00× | 3.6108 / 368 | 2.8004 / 737 |
+| DeltaBlue | 0.6643 | 0.5932 | 1.12× | 347 | 690 | 1.99× | 1.0817 / 362 | 0.9309 / 712 |
+| Havlak | 5.3710 | 5.2363 | 1.03× | 345 | 658 | 1.91× | 7.8756 / 360 | 6.9368 / 675 |
+| Json | 0.8337 | 0.7955 | 1.05× | 372 | 690 | 1.85× | 1.5057 / 387 | 1.2951 / 706 |
+| List | 0.6362 | 0.4968 | 1.28× | 315 | 362 | 1.15× | 1.4094 / 330 | 0.8599 / 354 |
+| Mandelbrot | 0.5281 | 0.3631 | 1.45× | 319 | 374 | 1.17× | 1.7407 / 334 | 0.6546 / 368 |
+| NBody | 0.6402 | 0.4605 | 1.39× | 318 | 406 | 1.28× | 1.7381 / 333 | 0.7331 / 405 |
+| Permute | 0.7977 | 0.7204 | 1.11× | 314 | 358 | 1.14× | 1.7187 / 329 | 1.3472 / 349 |
+| Queens | 0.4673 | 0.4086 | 1.14× | 315 | 362 | 1.15× | 1.1388 / 330 | 0.7744 / 357 |
+| Richards | 3.0171 | 2.7211 | 1.11× | 326 | 466 | 1.43× | 5.7276 / 342 | 4.7373 / 465 |
+| Sieve | 0.6137 | 0.3718 | 1.65× | 314 | 354 | 1.13× | 1.4822 / 329 | 0.4770 / 345 |
+| Storage | 1.4100 | 1.2773 | 1.10× | 329 | 502 | 1.53× | 4.4473 / 344 | 2.0857 / 507 |
+| Towers | 0.9097 | 0.8556 | 1.06× | 315 | 366 | 1.16× | 3.0186 / 330 | 1.9358 / 357 |
+| **Geometric mean** | | | **1.19×** | | | **1.42×** | | |
+
+The Wasm columns come from a later run of the same workloads under Node's
+WASI host. Each cell gives the median time across seven fresh processes,
+including startup and module instantiation, followed by the stripped module
+size in KiB (plus the Lua script for the interpreter). On Wasm, Luamura
+achieved a **1.60× geometric-mean speedup** at **1.36× the deployment size**
+of the Lua interpreter and script.
 
 
 ## Limitations and Future Directions

@@ -1,27 +1,29 @@
 ---
 title: "AOT SpiderMonkey Part II: AmberMonkey"
-publish: false
+publish: true
 publishDate: 2026-11-25
-description: ""
+description: "Providing SpiderMonkeys Baseline tier AOT"
 tags: ["cpp", "jit", "spidermonkey"]
 ---
 
-There are many reasons not to compile a dynamically typed language like
-JavaScript. The lack of static types and the capability for run-time
-reflection are two particularly thorny properties. All sensibilities point
-towards JIT compilation, a technique which adapts to run-time properties.
-That being said, there are certain environments where JIT compilation is
-untenible. Settings with an elevated security posture are one such example.
-That puts some seemingly crippling constraints on our design space. How can
-we execute JavaScript performantly without a JIT?
+Lets start by saying there are many reasons _not_ to compile a dynamically
+typed language like JavaScript. The lack of static types and the capability
+for run-time reflection are two particularly thorny properties. All
+sensibilities point towards JIT compilation, a technique which adapts to
+run-time properties. That being said, there are certain environments where
+JIT compilation is untenible. Settings with an elevated security posture are
+one such example. That puts some seemingly crippling constraints on our
+design space. How can we execute JavaScript performantly without a JIT?
 
-Thankfully there is an established body of research which gives us
-some good starting points. The AOT JavaScript paper by Serrano [1] uses a
-prior that in practice, most functions are monomorphic. Using some hybrid
-type inference and range analysis, they are able to produce a "most likely"
-specialization for each function. A specialized function is dispatched to
-specualtively, and retains guards to bail-out to the generic function when
-the type profile, or other invariants are violated.
+## Limitations of Existing AOT Techniques
+
+There is an established body of research which gives us some good starting
+points. The AOT JavaScript paper by Serrano [1] uses a prior that in
+practice, most functions are monomorphic. Using some hybrid type inference
+and range analysis, they are able to produce a "most likely" specialization
+for each function. A specialized function is dispatched to specualtively,
+and retains guards to bail-out to the generic function when the type
+profile, or other invariants are violated.
 
 The practice of _anticipating_ specializations through some best-effort
 compile time analysis is the defacto technique for AOT compilers. Static
@@ -74,45 +76,139 @@ of guest-program compilation. In descending order:
   site has a linked-list of stubs which hop between one another upon an
   operation invocation, seeking the first stub which passes it's guards.
 
-With these granularities in mind, we can acheive a refined perspective on
-whether guest-compiled JIT code has a "cross-workload recurrence" can be
-expected. At the trace and function level, the bespoke and idiosyncractic
-properties of a guest program have more space to distinugish themselves,
-likely sending recurrence to near zero. On the opposite side of the
-spectrum, bytecode level specialization is myopic enough not to care what
-kind of function it occurs in. An integer addition specialization has no
-preference whether it's running in function `foo` or workload A, or `bar` of
-workload B. It is in Inline Caching that we place our hope for AOT
-performance.
+With these granularities in mind, perhaps a refined perspective on whether
+guest-compiled JIT code has a "cross-workload recurrence" can be found. At
+the trace and function level, the bespoke and idiosyncractic properties of a
+guest program have more space to distinugish themselves, likely sending
+recurrence to near zero. On the opposite side of the spectrum, bytecode
+level specialization is myopic enough not to care what kind of function it
+occurs in. An integer addition specialization has no preference whether it's
+running in function `foo` or workload A, or `bar` of workload B. It is in
+Inline Caching that we place our hope for AOT performance.
  
-## Inline Caching and SpiderMonkey's CacheIR
+## Inline Caching Designs
 
-- Inline caching yields X% speedup over interpretation [CITE]
+The roots of Inline Caching go back to Chambers and Ungar in their seminal
+1980 paper on implementing Self. Self, like JavaScript, is a dynamic
+language which uses prototypes. Method dispatch invokes recursive routines
+for an object to "find it's prototype". If it lies higher in the prototype
+tree, every dynamic invocation of something like `p.foo` will make a costly
+lookup. The conception of Inlinine Caching here consistent of a monomorphic
+dispatch specialization. The resolved method address was cached and
+attempted to be used in subsequent dispatches.
 
-- The hope for AOT is that a subset of common stubs dominates the
-  dynamic execution distribution strongly enough to justify inclusion
-  into the binary.
+Since then the scope of Inline Caching in major JavaScript implementations
+has expanded beyond _Call_ operations to that of all polymorphic operations.
+This includes property access (`GetProp`, `SetProp`), arithmetic operations
+(`Add`, `Lt`), and many others. 
 
-- At first glance, such a "finite corpus" seems implausible. There may
-  be millions of distinct IC sites, each specializing their operator
-  to site-local data.
+The design space of Inline Caching systems can be broadly partitioned into
+two classes. The first we call _data-driven ICs_. One notable property of
+the IC system in Self is that patching an address from a generic lookup
+routine to the resolved method only requires _mutating data_. It does not
+need run-time code-generation, like regular JIT compilation does. This puts
+the technique closer to _qucikening_ [CITE: Braunler], and other forms of
+interpreter-only specialization like PEP 659 for a _Specializing Adaptive
+Interpreter_. V8's inline caching design uses data-driven IC vectors which
+are fed into _IC interpreters, making ICs trivially avialbale in their
+[JITless mode]().
 
-- For example, consider an operation like `a + 4`, where the type of `a`
-  is unknown. If we encounter `a` to be an integer, we might emit a stub
-  which, in it's assembly, contains a integer immedaite `3`. Afterall, the
-  three is a constant. There is no way for it to change. It makes sense
-  to burn this data directly into the stub body.
+The second class design we call _run-time-generated_ ICs. These
+architectures utility run-time code-generation made available by a JIT to
+aggresively specialize a local IC operation, producing a tailored stub of
+native code. JSC's IC model, as well as SpiderMonkeys CacheIR system both
+exemplify _run-time-generated_ designs. When exploring ways to bolster
+interpretation overhead in the AOT setting, dissaponitment is not an
+unreasonable reaction to finding that SpiderMonkeys inline Caching. That is,
+until we observe some compelling properties of the code-representation.
 
-- What the authors of SpiderMonkey prudently realized is that there is a
-  good reason to separate code from data, and rather than burn in site-local
-  constants, store them in site-local data buffersr access them indirectly
-  through stable indicies in the stub body. 
+## SpiderMonkey and CacheIR
 
+Run-time generated ICs are fast. Despite being a purely myopic optimization,
+ICs in SpiderMonkey account for an X% speedup over interpretation [CITE].
+Not peanuts! One hope for AOT is that a subset of common stubs dominates the
+dynamic execution distribution strongly enough to justify inclusion into the
+binary. How realistic is this hope?
+
+At first glance, such a "finite corpus" seems implausible. There may be
+millions of distinct IC sites, each specializing their operator to
+site-local data. For example, consider an operation like `a + 4`, where the
+type of `a` is unknown. If we encounter `a` to be an integer, we might emit
+a stub which, in it's assembly, contains a integer immedaite `3`. Afterall,
+the three is a constant. There is no way for it to change. It makes sense to
+burn this data directly into the stub body.
+
+What the authors of SpiderMonkey prudently realized is that there is a good
+reason to separate code from data, and rather than burn in site-local
+constants, store them in site-local data buffersr access them indirectly
+through stable indicies in the stub body. This enables _stub sharing_. The
+inital impetus was likely reducing JIT memory. It has the coincidental
+effect of making AOT ICs possible.
+
+// TODO: Put in figure 1 from the AM paper -- stub sharing.
+// All figures should use a consistent sub-figure description. Do _NOT_
+// be verbose in this desc. whatsover. Conise, oneline max.
+
+### Inline Cache Stub Distirbutions
+
+The intra-workload distribution of IC stubs was strongly intuited by several
+people. There exists a strong [pareto distribution]() for stubs globally,
+and for stubs of a particular IC kind. So much of engineering just comes
+down to finding and splitting 80/20 rules. In this case it's more like a
+95/5 rule.
+
+// TODO: We don't have an intra-workload distirbution figure in the paper.
+// we should probably create one for Octane perhaps. Actually, we do have
+// one from the 680 report. Hmm. Maybe we do in the figures dir actually.
+
+In the paper we setup a preliminary experiment to motivate the expectation
+of cross-workload recurrence. We took 32 common sites from the tp6 pageload
+suite (Amazon, CNN, Ebay, YouTube, etc) and measured how well ICs from one
+site generalized to the other. One important measurement detail is whether
+we used the _static intersection_ or the _execution weighted intersection_.
+Our hypothesis was that the stubs which were common across workloads were
+also the most heavily executed. 
+
+
+// TODO: We should include a nice inter-workload figure. Maybe the Jaccard
+// matrix that got excluded? Hmm Lets render a few. There is also the
+// fig 2 (?) in the pape w/ the baseline v.s IC comparison.
+
+> Roughly 5.1 million IC attachment requests reduce to 1,591 distinct
+  guestscript stub bodies.
+
+
+- In the paper we also contrast the cross-workload recurrence of IC stubs
+  against guest functions (for which there is virutally none)
+
+## Engineering Acutally AOT Code 
+
+Now that we've identified a candidate corpus of AOT IC stubs, how should we
+go about _using them_? Similar to the problem in [part 1](), the issue is
+_Jit Coupling_, where pointers to the host runtime, or the current GC realm,
+make JIT code dependent on running within that particular, ephemeral
+environment. If we want to bootstrap our corpus into the engine and use
+stubs in subequent runs, the first thing we need to do is identify and
+exfiltrate all the coupling.
+
+// TODO: We should include figure 3 and figure 4 from the paper here.
+// not sure if i'll use them, but just to see for now.
+
+
+## Results
+
+// TODO: lets include the main results. Figure 5, figure6 and figure 8
+
+## References
 
 [1] TODO: Serrano AOT paper
+
 [2] TODO: Mecon SBBV paper
+
 [3] TODO: NightMonkey citation
+
 [4] TODO: TraceMonkey citation
+
 [5] TODO: LuaJIT citation
 
 
