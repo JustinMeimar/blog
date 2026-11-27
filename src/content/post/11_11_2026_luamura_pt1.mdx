@@ -6,18 +6,20 @@ description: "An Ad-Hoc First Futamura Projection of PUC Lua"
 tags: ["compilers", "partial-evaluation"]
 ---
 
-> Execution of dynamically typed languages can approach native speeds with JIT
-  compilation, but at what cost? 
+> The Lua VMs encodes the precise bytecode semantics needed for a simple
+> AOT baseline compiler. The only issue -- how to get them out?
 
 [_Luamura_](links.luamura) is a fork of the [PUC Lua 5.5](links.lua)
-interpreter that began as a weekend project to compile Lua ahead-of-time
-(AOT). Implementing an AOT compiler from scratch presents a large design
-space. Despite Lua being on the simpler end of the language spectrum, I
-wanted to avoid re-implementation. Besides, constraints are often useful and
-will help widdle down the design space for us. Therefore, the aim is to
-build an AOT compiler which _reuses the Lua VM's semantics_. But before
-getting into that, why even try to compile a dynamic language in the first
-place?
+interpreter. It began as a weekend project to compile Lua _ahead-of-time_
+(AOT). Implementing an AOT compiler from scratch is a lot of up front work!
+Meanwhile, Lua PUC is a small, stable and elegant implementation. It would
+be great to turn this existing VM into a compiler. The only problem -- the
+bytecode semantics we need are trapped in a monolithic interpreter loop.
+Some way to build an AOT compiler which _reuses the Lua VM's semantics_ will
+be needed. Sounds tricky. But before getting into that, why even try to
+compile a dynamic language in the first place?
+
+## The Utility and Constraints of an AOT Lua Compiler
 
 JIT compilers map data into code at runtime. Depending on data-execution can
 limit the deployment of a program to environments which (1) allow producing
@@ -25,10 +27,10 @@ code at runtime; (2) tolerate the security risks associated with JIT; and
 (3) can afford a warm-up phase. A good counter-example for where these
 conditions fail-to-arise is in short-lived [Function-as-a-Service
 (FaaS)](links.faas) workloads running inside [WebAssembly](links.wasm)
-sandboxes [^1]. Here functions often finish before a JIT could warm up, and even
-if they could, WASM modules cannot directly execute data at runtime.
+sandboxes [^1]. Here functions often finish before a JIT could warm up, and
+even if they could, WASM modules cannot directly execute data at runtime.
 
-Now back to our design constraint: no duplication of Lua bytecode semantics.
+We also have a slight bone to pick with the architecture of JITs.
 Maintaining a single source of truth is a fundamental principle in
 programming, yet JIT compilers often eschew it for pragmatic reasons
 (writing backends often uses custom assembly for each tier). If a JIT has
@@ -63,28 +65,28 @@ interpreter](links.threaded_dispatch), some amount of control flow overhead
 is necessary to get from one opcode to the next.
 
 If the bytecode is fixed we can imagine "unrolling" the interpreter loop
-along allkthe paths it might take. Stamping out a copy of the handler for
-each bytecode will etch out a CFG. Unlike a binary compiled from a
-statically typed language, however, the blocks in our CFG will be composed
-of coarse, generic VM routines rather than more-or-less direct
+along all the paths it might take. Stamping out a copy of the handler for
+each bytecode will etch out the guest programs CFG. Unlike a binary compiled
+from a statically typed language, however, the blocks in our CFG will be
+composed of coarse, generic VM routines rather than more-or-less direct
 transliteration.
 
-```c
-// p.x in Lua: GETFIELD (inlined)
-if (!ttistable(p)) luaV_finishget(...);   // not a table
-slot = luaH_getshortstr(hvalue(p), "x");  // hash lookup
-if (isempty(slot)) luaV_finishget(...);   // __index fallback
-
-// p->x in C
-movsd  xmm0, [rdi]
-```
+Reusing the VMs generic bytecode handlers should dampen any expectation that
+our AOT compiler will achieve near-native performance. To illustrate,
+consider the difference between a VMs property access semantics, versus that
+of a statically typed language. An expression like `p.x` is syntactically
+common in a language like _C_ and in Lua, yet the former compiles down to a
+single load from the base address of a point `p`, offset by the displacement
+of the field for `x`, while the later accesses a hash table, does a bunch of
+checks, etc. The only area that _Luamura_ ventures to optimize is that of
+the _dispatch overhead_ (at least for version one).
 
 ## The First Futamura Projection
 
 The [Futamura projections](links.futamura) describe how partial evaluation
 can derive compiled programs, compilers, and compiler generators from an
-existing interpreter. The first projection specializes an interpreter to a
-fixed program, and is what we pursue here in _Luamura_.
+existing source of semantics. The first projection specializes an
+interpreter to a fixed program, and is what we pursue here in _Luamura_.
 
 The mechanics of the FFP are slightly nebulous. Compared to
 what we implement here, there are much more sophisticated implementations in
