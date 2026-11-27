@@ -1,0 +1,54 @@
+---
+interface Props {
+  label: string;
+  tabs: Record<string, string>;
+}
+
+const { label, tabs } = Astro.props;
+const group = `table-tabs-${crypto.randomUUID()}`;
+---
+
+<fieldset class="table-tabs">
+  <legend class="sr-only">{label}</legend>
+  {Object.entries(tabs).map(([key, name], index) => (
+    <>
+      <input class="sr-only" type="radio" name={group} id={`${group}-${key}`} checked={index === 0} />
+      <label for={`${group}-${key}`}>{name}</label>
+      <div class="panel" set:html={Astro.slots.render(key)} />
+    </>
+  ))}
+</fieldset>
+
+<style>
+  .table-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    margin: 1.5rem 0;
+    border: none;
+    padding: 0;
+  }
+  label {
+    cursor: pointer;
+    padding: 0.4rem 0.9rem;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font: 0.875rem var(--font-mono);
+  }
+  input:checked + label {
+    border-color: var(--accent-pop);
+    color: var(--text);
+  }
+  input:focus-visible + label {
+    outline: 2px solid var(--accent-pop);
+    outline-offset: 2px;
+  }
+  .panel {
+    display: none;
+    order: 1;
+    width: 100%;
+    min-width: 0;
+    border-top: 1px solid var(--border);
+  }
+  input:checked + label + .panel { display: block; }
+</style>

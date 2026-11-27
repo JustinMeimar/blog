@@ -1,6 +1,6 @@
 ---
 title: "AOT SpiderMonkey Part II: AmberMonkey"
-publish: true
+publish: false
 publishDate: 2026-11-25
 description: "Providing SpiderMonkeys Baseline tier AOT"
 tags: ["cpp", "jit", "spidermonkey"]
@@ -164,6 +164,7 @@ down to finding and splitting 80/20 rules. In this case it's more like a
 
 <BlogImage
   src="/images/ambermonkey_part2/intra-workload-distribution.png"
+  size="small"
   alt="Cumulative IC attachment frequency by ranked stub body, showing the median and range across eight sites."
   caption="IC attachment concentration across eight sites, with stubs ranked by frequency."
   darkMode="invert"
@@ -187,6 +188,7 @@ also the most heavily executed.
 
 <BlogImage
   src="/images/ambermonkey_part2/inter-workload-coverage.png"
+  size="small"
   alt="Eight-site coverage matrix with static coverage below the diagonal, dynamic coverage above it, and body counts on the diagonal."
   caption="Earlier eight-site experiment: static coverage below, execution-weighted coverage above."
   darkMode="invert"
@@ -233,6 +235,7 @@ confidence intervals across ten independent runs.
 
 <BlogImage
   src="/images/ambermonkey_part2/speedometer-performance.svg"
+  size="full"
   alt="Per-workload Speedometer 3.1 speedups for AM-Empty, AM-IC, AM, and AM-Oracle over interpreter-only execution."
   caption="Speedometer 3.1 speedup over interpreter-only execution."
   darkMode="invert"
@@ -240,20 +243,23 @@ confidence intervals across ten independent runs.
 
 <BlogImage
   src="/images/ambermonkey_part2/octane-performance.svg"
+  size="full"
   alt="Per-subtest Octane 2.0 speedups for the AOT configurations over interpreter-only execution, on a logarithmic axis."
   caption="Octane 2.0 speedup over interpreter-only execution; logarithmic scale."
   darkMode="invert"
 />
 
 <BlogImage
-  src="/images/ambermonkey_part2/indirection-overhead.svg"
-  alt="Retired instruction overhead of RIT indirection, linker relocations, and value mirroring relative to Baseline code with Ion disabled."
-  caption="Retired instruction overhead of indirection and its optimizations."
+  src="/images/ambermonkey_part2/jitless-comparison.svg"
+  size="medium"
+  alt="Performance retained relative to each engine’s default on Speedometer 3.1 and Octane 2.0."
+  caption="Performance relative to each engine’s default: Speedometer 3.1 (solid), Octane 2.0 (hatched)."
   darkMode="invert"
 />
 
 <BlogImage
   src="/images/ambermonkey_part2/executable-memory.svg"
+  size="medium"
   alt="Peak content-process executable-code proportional set size during Speedometer, split into shared and private code."
   caption="Peak executable-code PSS during Speedometer 3.1, split into shared and private code."
   darkMode="invert"
